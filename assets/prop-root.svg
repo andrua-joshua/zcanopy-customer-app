@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="512" height="512" viewBox="0 0 240 240" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Prop root icon">
+  <g fill="none" stroke="#A9610E" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M120 30 L120 120" />
+    <path d="M80 40 C100 10,140 10,160 40" stroke-width="4" />
+    <path d="M110 120 C95 130,78 155,70 190" />
+    <path d="M130 120 C145 130,162 155,170 190" />
+    <path d="M100 140 C88 142,80 154,76 164" stroke-width="3.5"/>
+    <path d="M140 140 C152 142,160 154,164 164" stroke-width="3.5"/>
+    <path d="M30 200 L210 200" stroke="#6B3E1A" stroke-width="5" />
+  </g>
+</svg>

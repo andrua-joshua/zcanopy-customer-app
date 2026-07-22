@@ -1,0 +1,88 @@
+name: zcanopy
+description: "A brokers smart way of finding properties."
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.10.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  http: ^1.6.0
+  hive: ^2.2.3
+  hive_flutter: ^1.1.0
+  path_provider: ^2.1.5
+  smooth_page_indicator: ^1.2.1
+  firebase_core: ^4.2.1
+  pinput: ^6.0.0
+  firebase_auth: ^6.1.2
+  google_fonts: ^6.3.2
+  flutter_staggered_animations: ^1.1.1
+  google_sign_in: ^7.2.0
+  shimmer: ^3.0.0
+  iconsax: ^0.0.8
+  location: ^8.0.1
+  google_maps_flutter: ^2.14.0
+  url_launcher: ^6.3.2
+  share_plus: ^12.0.1
+  table_calendar: ^3.2.0
+  fl_chart: ^1.1.1
+  video_player: ^2.10.1
+  image_picker: ^1.2.1
+  webview_flutter: ^4.13.0
+  flutter_local_notifications: ^19.5.0
+  firebase_messaging: ^16.0.4
+  flutter_app_badger: ^1.3.0
+  flutter_svg: ^2.2.2
+  intl_phone_field: ^3.2.0
+  pointycastle: ^4.0.0
+  convert: ^3.1.2
+  asn1lib: ^1.6.5
+  flutter_native_splash: ^2.4.7
+  flutter_launcher_icons: ^0.14.4
+  google_mobile_ads: ^6.0.0
+  device_info_plus: ^12.3.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_native_splash: ^2.4.7
+  flutter_launcher_icons: ^0.14.4
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/splashScreen.png
+    - assets/welcome2.png
+    - assets/info2.jpg
+    - assets/map2.jpg
+    - assets/smallLOGO.png
+    - assets/midLOGO.png
+    - assets/zgoogle.png
+    - assets/background.jpg
+    - assets/video.mp4
+    - assets/taskBar.jpg
+    - assets/newHomes/kampala1.jpg
+    - assets/newHomes/kampala2.jpg
+    - assets/newHomes/kampala3.jpg
+    - assets/newHomes/kampala4.jpg
+    - assets/mtnSym.png
+    - assets/airtelSym.png
+    - assets/buttress-root.svg
+    - assets/fibrous-root.svg
+    - assets/prop-root.svg
+
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: "assets/midLOGO.png"
+
+flutter_native_splash:
+  image: "assets/splashScreen.png"
+  color: "#ffffff"
+  android_gravity: fill
+  android: true
+  ios: true

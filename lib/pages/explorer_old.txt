@@ -1,0 +1,749 @@
+﻿                  const SizedBox(height: 20),
+
+                  /*     RefreshIndicator(
+                      onRefresh: _reloadList,
+                      color: Colors.brown,
+                      child:Text('hello')
+                          //      Expanded(
+                        /*  AnimationLimiter(
+                              child: ListView.builder(
+                        controller: _scrollController,
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        itemCount: _filterRegions().length,
+                        itemBuilder: (context, index) {
+                          if (index == regionsX.length) {
+                            return const Padding(
+                              padding: EdgeInsets.all(16.0),
+                              child: Align(
+                                alignment: Alignment.center,
+                                child: ZLoadingIndicator(
+                                  size: 22,
+                                  color: Color.fromARGB(255, 169, 97, 14),
+                                  strokeWidth: 2,
+                                ),
+                              ),
+                            );
+                          }
+
+                          final item = regionsX[index];
+
+                          return Text(
+                              'hello'); /* Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                item,
+                                style: const TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+
+                              const SizedBox(height: 10),
+
+                              // Row of items in this region
+                              SizedBox(
+                                height: 520, //220
+                                child: ListView.builder(
+                                  scrollDirection: Axis.horizontal,
+                                  itemCount: regions.length,
+                                  itemBuilder: (context, index) {
+                                    final item = regions[index];
+                               //     final arrXCnt = regions[item]!.length;
+
+                                    return SizedBox(
+                                      height: 400,
+                                      child: Text('hello') 
+                                      
+                                      /*ListView.builder(
+                                          scrollDirection: Axis.horizontal,
+                                          itemCount: regions[item]?.length ?? 0,
+                                          itemBuilder: (context, index) {
+                                          //  final item2 = item![index];
+                                            final item2 = regions[item]![index];
+
+                                        /*
+                                            return AnimationConfiguration
+                                                .staggeredList(
+                                                    position: index,
+                                                    duration: const Duration(
+                                                        milliseconds: 500),
+                                                    child: SlideAnimation(
+                                                        verticalOffset: 50.0,
+                                                        child: FadeInAnimation(
+                                                          child:
+                                                              GestureDetector(
+                                                            onTap: () {
+                                                              Navigator.pushReplacement(
+                                                                  context,
+                                                                  MaterialPageRoute(
+                                                                      builder:
+                                                                          (_) =>
+                                                                              PropertyDetailsPage()));
+                                                            },
+                                                            child: Container(
+                                                              width: 320, //220
+                                                              margin:
+                                                                  const EdgeInsets
+                                                                      .only(
+                                                                      right:
+                                                                          12),
+                                                              decoration:
+                                                                  BoxDecoration(
+                                                                color: Colors
+                                                                    .white,
+                                                                borderRadius:
+                                                                    BorderRadius
+                                                                        .circular(
+                                                                            15),
+                                                                boxShadow: [
+                                                                  BoxShadow(
+                                                                    color: Colors
+                                                                        .black
+                                                                        .withOpacity(
+                                                                            0.05),
+                                                                    blurRadius:
+                                                                        6,
+                                                                    offset:
+                                                                        const Offset(
+                                                                            0,
+                                                                            3),
+                                                                  ),
+                                                                ],
+                                                              ),
+                                                              child: Column(
+                                                                crossAxisAlignment:
+                                                                    CrossAxisAlignment
+                                                                        .start,
+                                                                children: [
+                                                                  // 🔹 Image
+                                                                  ClipRRect(
+                                                                    borderRadius: const BorderRadius
+                                                                        .vertical(
+                                                                        top: Radius.circular(
+                                                                            15)),
+                                                                    child: Image
+                                                                        .network(
+                                                                      item2[
+                                                                          'image'],
+                                                                      height:
+                                                                          310,
+                                                                      width: double
+                                                                          .infinity,
+                                                                      fit: BoxFit
+                                                                          .cover,
+                                                                    ),
+                                                                  ),
+
+                                                                  SizedBox(
+                                                                      height:
+                                                                          20),
+                                                                  // 🔹 Property Info
+                                                                  Padding(
+                                                                    padding:
+                                                                        const EdgeInsets
+                                                                            .all(
+                                                                            8.0),
+                                                                    child:
+                                                                        Column(
+                                                                      crossAxisAlignment:
+                                                                          CrossAxisAlignment
+                                                                              .start,
+                                                                      children: [
+                                                                        Text(
+                                                                          item2[
+                                                                              'name'],
+                                                                          style:
+                                                                              const TextStyle(fontWeight: FontWeight.bold),
+                                                                        ),
+                                                                        Text(
+                                                                          item2[
+                                                                              'location'],
+                                                                          style: const TextStyle(
+                                                                              color: Colors.grey,
+                                                                              fontSize: 12),
+                                                                        ),
+                                                                        const SizedBox(
+                                                                            height:
+                                                                                4),
+                                                                        if (item2['propertyType'] !=
+                                                                            null)
+                                                                          Text(
+                                                                            item2['propertyType'],
+                                                                            style:
+                                                                                const TextStyle(
+                                                                              fontSize: 12,
+                                                                              color: Colors.grey,
+                                                                              fontStyle: FontStyle.italic,
+                                                                            ),
+                                                                          ),
+                                                                        const SizedBox(
+                                                                            height:
+                                                                                4),
+                                                                        Row(
+                                                                          children: [
+                                                                            Icon(Icons.bed,
+                                                                                size: 16,
+                                                                                color: Color.fromARGB(255, 169, 97, 14)),
+                                                                            Text(" ${item2['bedrooms']}"),
+                                                                            const SizedBox(width: 8),
+                                                                            Icon(Icons.bathtub,
+                                                                                size: 16,
+                                                                                color: Color.fromARGB(255, 169, 97, 14)),
+                                                                            Text(" ${item2['bathrooms']}"),
+                                                                          ],
+                                                                        ),
+                                                                        Row(
+                                                                          children: [
+                                                                            Icon(Icons.weekend,
+                                                                                size: 16,
+                                                                                color: Color.fromARGB(255, 169, 97, 14)),
+                                                                            Text(item2['livingRoom']
+                                                                                ? " Living Room"
+                                                                                : " No Living"),
+                                                                            const SizedBox(width: 8),
+                                                                            Icon(Icons.kitchen,
+                                                                                size: 16,
+                                                                                color: Color.fromARGB(255, 169, 97, 14)),
+                                                                            Text(item2['kitchen']
+                                                                                ? " Kitchen"
+                                                                                : " No Kitchen"),
+                                                                          ],
+                                                                        ),
+                                                                        const SizedBox(
+                                                                            height:
+                                                                                6),
+                                                                        Text(
+                                                                          "ugx.${item2['price']}/mo",
+                                                                          style: const TextStyle(
+                                                                              color: Color.fromARGB(255, 169, 97, 14),
+                                                                              fontWeight: FontWeight.w600),
+                                                                        ),
+                                                                      ],
+                                                                    ),
+                                                                  ),
+                                                                ],
+                                                              ),
+                                                            ),
+                                                          ),
+                                                        )));
+                                      */
+                                          }),*/
+                                    );
+                                  },
+                                ),
+                              ),
+
+                              const SizedBox(height: 20),
+                            ],
+                          );*/
+                          //    return null;
+                        },
+                      )
+
+                              //   }
+                              //).toList(),
+                              //   ),
+                              //   )
+                              )*/
+                      //      )
+                      ) */
+                  //    }
+                  //   },
+                  // )
+                  //   )
+
+                  // 🔹 Filter regions based on selected category
+                  FutureBuilder(
+                    future: Future.delayed(Duration(milliseconds: 300))
+                        .then((_) => _filterRegions()),
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return Align(
+                          alignment: Alignment.center,
+                          child: ZLoadingIndicator(
+                            size: 22,
+                            color: Color.fromARGB(255, 169, 97, 14),
+                            strokeWidth: 2,
+                          ),
+                        );
+                      }
+
+                      if (!snapshot.hasData) {
+                        return Align(
+                          alignment: Alignment.center,
+                          child: ZLoadingIndicator(
+                            size: 22,
+                            color: Color.fromARGB(255, 169, 97, 14),
+                            strokeWidth: 2,
+                          ),
+                        );
+                      }
+
+                      var filteredRegions = snapshot.data
+                          as Map<String, List<Map<String, dynamic>>>;
+                      if (filteredRegions.length == 0) {
+                        return Align(
+                          alignment: Alignment.center,
+                          child: ZLoadingIndicator(
+                            size: 22,
+                            color: Color.fromARGB(255, 169, 97, 14),
+                            strokeWidth: 2,
+                          ),
+                        );
+                      } else {
+                        // 🔹 Regions list
+
+                        return Expanded(
+                          child: ListView(
+                            children: filteredRegions.entries.map((entry) {
+                              String regionName = entry.key;
+                              List<Map<String, dynamic>> items = entry.value;
+
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    regionName,
+                                    style: const TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+
+                                  const SizedBox(height: 10),
+
+                                  // Row of items in this region
+                                  SizedBox(
+                                    height: 520, //220
+                                    child: ListView.builder(
+                                      controller: _scrollController,
+                                      scrollDirection: Axis.horizontal,
+                                      itemCount: items.length +
+                                          (isLoadingMore
+                                              ? 1
+                                              : 0), //items.length,
+                                      itemBuilder: (context, index) {
+                                        final item = items[index];
+
+                                        if (index < items.length) {
+                                          return AnimationConfiguration
+                                              .staggeredList(
+                                                  position: index,
+                                                  duration: const Duration(
+                                                      milliseconds: 500),
+                                                  child: SlideAnimation(
+                                                      verticalOffset: 50.0,
+                                                      child: FadeInAnimation(
+                                                        child: GestureDetector(
+                                                          onTap: () {
+                                                            Navigator
+                                                                .pushReplacement(
+                                                                    context,
+                                                                    MaterialPageRoute(
+                                                                        builder: (_) =>
+                                                                            PropertyDetailsPage(
+                                                                              itemID: item['itemID'] != null ? item['itemID'] : '123',
+                                                                            )));
+                                                          },
+                                                          child: Container(
+                                                            width: 320, //220
+                                                            margin:
+                                                                const EdgeInsets
+                                                                    .only(
+                                                                    right: 12),
+                                                            decoration:
+                                                                BoxDecoration(
+                                                              color:
+                                                                  Colors.white,
+                                                              borderRadius:
+                                                                  BorderRadius
+                                                                      .circular(
+                                                                          15),
+                                                              boxShadow: [
+                                                                BoxShadow(
+                                                                  color: Colors
+                                                                      .black
+                                                                      .withOpacity(
+                                                                          0.05),
+                                                                  blurRadius: 6,
+                                                                  offset:
+                                                                      const Offset(
+                                                                          0, 3),
+                                                                ),
+                                                              ],
+                                                            ),
+                                                            child: Column(
+                                                              crossAxisAlignment:
+                                                                  CrossAxisAlignment
+                                                                      .start,
+                                                              children: [
+                                                                // 🔹 Image
+                                                                ClipRRect(
+                                                                  borderRadius: const BorderRadius
+                                                                      .vertical(
+                                                                      top: Radius
+                                                                          .circular(
+                                                                              15)),
+                                                                  child: Image
+                                                                      .network(
+                                                                    item[
+                                                                        'image'],
+                                                                    height: 310,
+                                                                    width: double
+                                                                        .infinity,
+                                                                    fit: BoxFit
+                                                                        .cover,
+                                                                  ),
+                                                                ),
+
+                                                                SizedBox(
+                                                                    height: 20),
+                                                                // 🔹 Property Info
+                                                                Padding(
+                                                                  padding:
+                                                                      const EdgeInsets
+                                                                          .all(
+                                                                          8.0),
+                                                                  child: Column(
+                                                                    crossAxisAlignment:
+                                                                        CrossAxisAlignment
+                                                                            .start,
+                                                                    children: [
+                                                                      Text(
+                                                                        item[
+                                                                            'name'],
+                                                                        style: const TextStyle(
+                                                                            fontWeight:
+                                                                                FontWeight.bold),
+                                                                      ),
+                                                                      Text(
+                                                                        item[
+                                                                            'location'],
+                                                                        style: const TextStyle(
+                                                                            color:
+                                                                                Colors.grey,
+                                                                            fontSize: 12),
+                                                                      ),
+                                                                      const SizedBox(
+                                                                          height:
+                                                                              4),
+                                                                      if (item[
+                                                                              'propertyType'] !=
+                                                                          null)
+                                                                        Text(
+                                                                          item[
+                                                                              'propertyType'],
+                                                                          style:
+                                                                              const TextStyle(
+                                                                            fontSize:
+                                                                                12,
+                                                                            color:
+                                                                                Colors.grey,
+                                                                            fontStyle:
+                                                                                FontStyle.italic,
+                                                                          ),
+                                                                        ),
+                                                                      const SizedBox(
+                                                                          height:
+                                                                              4),
+                                                                      Row(
+                                                                        children: [
+                                                                          Icon(
+                                                                              Icons.bed,
+                                                                              size: 16,
+                                                                              color: Color.fromARGB(255, 169, 97, 14)),
+                                                                          Text(
+                                                                              " ${item['bedrooms']}"),
+                                                                          const SizedBox(
+                                                                              width: 8),
+                                                                          Icon(
+                                                                              Icons.bathtub,
+                                                                              size: 16,
+                                                                              color: Color.fromARGB(255, 169, 97, 14)),
+                                                                          Text(
+                                                                              " ${item['bathrooms']}"),
+                                                                        ],
+                                                                      ),
+                                                                      Row(
+                                                                        children: [
+                                                                          Icon(
+                                                                              Icons.weekend,
+                                                                              size: 16,
+                                                                              color: Color.fromARGB(255, 169, 97, 14)),
+                                                                          Text(item['livingRoom']
+                                                                              ? " Living Room"
+                                                                              : " No Living"),
+                                                                          const SizedBox(
+                                                                              width: 8),
+                                                                          Icon(
+                                                                              Icons.kitchen,
+                                                                              size: 16,
+                                                                              color: Color.fromARGB(255, 169, 97, 14)),
+                                                                          Text(item['kitchen']
+                                                                              ? " Kitchen"
+                                                                              : " No Kitchen"),
+                                                                        ],
+                                                                      ),
+                                                                      const SizedBox(
+                                                                          height:
+                                                                              6),
+                                                                      Text(
+                                                                        "ugx.${item['price']}/mo",
+                                                                        style: const TextStyle(
+                                                                            color: Color.fromARGB(
+                                                                                255,
+                                                                                169,
+                                                                                97,
+                                                                                14),
+                                                                            fontWeight:
+                                                                                FontWeight.w600),
+                                                                      ),
+                                                                    ],
+                                                                  ),
+                                                                ),
+                                                              ],
+                                                            ),
+                                                          ),
+                                                        ),
+                                                      )));
+                                        } else {
+                                          return const Padding(
+                                            padding: EdgeInsets.symmetric(
+                                                vertical: 20),
+                                            child: Center(
+                                                child: ZLoadingIndicator(
+                                              size: 22,
+                                              strokeWidth: 2,
+                                              color: Color.fromARGB(
+                                                  255, 169, 97, 14),
+                                            )),
+                                          );
+                                        }
+
+/*
+                                        return AnimationConfiguration
+                                            .staggeredList(
+                                                position: index,
+                                                duration: const Duration(
+                                                    milliseconds: 500),
+                                                child: SlideAnimation(
+                                                    verticalOffset: 50.0,
+                                                    child: FadeInAnimation(
+                                                      child: GestureDetector(
+                                                        onTap: () {
+                                                          Navigator
+                                                              .pushReplacement(
+                                                                  context,
+                                                                  MaterialPageRoute(
+                                                                      builder: (_) =>
+                                                                          PropertyDetailsPage(
+                                                                            itemID: item['itemID'] != null
+                                                                                ? item['itemID']
+                                                                                : '123',
+                                                                          )));
+                                                        },
+                                                        child: Container(
+                                                          width: 320, //220
+                                                          margin:
+                                                              const EdgeInsets
+                                                                  .only(
+                                                                  right: 12),
+                                                          decoration:
+                                                              BoxDecoration(
+                                                            color: Colors.white,
+                                                            borderRadius:
+                                                                BorderRadius
+                                                                    .circular(
+                                                                        15),
+                                                            boxShadow: [
+                                                              BoxShadow(
+                                                                color: Colors
+                                                                    .black
+                                                                    .withOpacity(
+                                                                        0.05),
+                                                                blurRadius: 6,
+                                                                offset:
+                                                                    const Offset(
+                                                                        0, 3),
+                                                              ),
+                                                            ],
+                                                          ),
+                                                          child: Column(
+                                                            crossAxisAlignment:
+                                                                CrossAxisAlignment
+                                                                    .start,
+                                                            children: [
+                                                              // 🔹 Image
+                                                              ClipRRect(
+                                                                borderRadius: const BorderRadius
+                                                                    .vertical(
+                                                                    top: Radius
+                                                                        .circular(
+                                                                            15)),
+                                                                child: Image
+                                                                    .network(
+                                                                  item['image'],
+                                                                  height: 310,
+                                                                  width: double
+                                                                      .infinity,
+                                                                  fit: BoxFit
+                                                                      .cover,
+                                                                ),
+                                                              ),
+
+                                                              SizedBox(
+                                                                  height: 20),
+                                                              // 🔹 Property Info
+                                                              Padding(
+                                                                padding:
+                                                                    const EdgeInsets
+                                                                        .all(
+                                                                        8.0),
+                                                                child: Column(
+                                                                  crossAxisAlignment:
+                                                                      CrossAxisAlignment
+                                                                          .start,
+                                                                  children: [
+                                                                    Text(
+                                                                      item[
+                                                                          'name'],
+                                                                      style: const TextStyle(
+                                                                          fontWeight:
+                                                                              FontWeight.bold),
+                                                                    ),
+                                                                    Text(
+                                                                      item[
+                                                                          'location'],
+                                                                      style: const TextStyle(
+                                                                          color: Colors
+                                                                              .grey,
+                                                                          fontSize:
+                                                                              12),
+                                                                    ),
+                                                                    const SizedBox(
+                                                                        height:
+                                                                            4),
+                                                                    if (item[
+                                                                            'propertyType'] !=
+                                                                        null)
+                                                                      Text(
+                                                                        item[
+                                                                            'propertyType'],
+                                                                        style:
+                                                                            const TextStyle(
+                                                                          fontSize:
+                                                                              12,
+                                                                          color:
+                                                                              Colors.grey,
+                                                                          fontStyle:
+                                                                              FontStyle.italic,
+                                                                        ),
+                                                                      ),
+                                                                    const SizedBox(
+                                                                        height:
+                                                                            4),
+                                                                    Row(
+                                                                      children: [
+                                                                        Icon(
+                                                                            Icons
+                                                                                .bed,
+                                                                            size:
+                                                                                16,
+                                                                            color: Color.fromARGB(
+                                                                                255,
+                                                                                169,
+                                                                                97,
+                                                                                14)),
+                                                                        Text(
+                                                                            " ${item['bedrooms']}"),
+                                                                        const SizedBox(
+                                                                            width:
+                                                                                8),
+                                                                        Icon(
+                                                                            Icons
+                                                                                .bathtub,
+                                                                            size:
+                                                                                16,
+                                                                            color: Color.fromARGB(
+                                                                                255,
+                                                                                169,
+                                                                                97,
+                                                                                14)),
+                                                                        Text(
+                                                                            " ${item['bathrooms']}"),
+                                                                      ],
+                                                                    ),
+                                                                    Row(
+                                                                      children: [
+                                                                        Icon(
+                                                                            Icons
+                                                                                .weekend,
+                                                                            size:
+                                                                                16,
+                                                                            color: Color.fromARGB(
+                                                                                255,
+                                                                                169,
+                                                                                97,
+                                                                                14)),
+                                                                        Text(item['livingRoom']
+                                                                            ? " Living Room"
+                                                                            : " No Living"),
+                                                                        const SizedBox(
+                                                                            width:
+                                                                                8),
+                                                                        Icon(
+                                                                            Icons
+                                                                                .kitchen,
+                                                                            size:
+                                                                                16,
+                                                                            color: Color.fromARGB(
+                                                                                255,
+                                                                                169,
+                                                                                97,
+                                                                                14)),
+                                                                        Text(item['kitchen']
+                                                                            ? " Kitchen"
+                                                                            : " No Kitchen"),
+                                                                      ],
+                                                                    ),
+                                                                    const SizedBox(
+                                                                        height:
+                                                                            6),
+                                                                    Text(
+                                                                      "ugx.${item['price']}/mo",
+                                                                      style: const TextStyle(
+                                                                          color: Color.fromARGB(
+                                                                              255,
+                                                                              169,
+                                                                              97,
+                                                                              14),
+                                                                          fontWeight:
+                                                                              FontWeight.w600),
+                                                                    ),
+                                                                  ],
+                                                                ),
+                                                              ),
+                                                            ],
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    )));*/
+                                      },
+                                    ),
+                                  ),
+
+                                  const SizedBox(height: 20),
+                                ],
+                              );
+                            }).toList(),
+                          ),
+                        );
+                      }
+                    },
+                  )
+                ],
+              ),
+            ),
+          ),
+        );

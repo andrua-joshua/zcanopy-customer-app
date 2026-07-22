@@ -1,0 +1,22 @@
+void fetchData() async {
+  try {
+    final data = await NetworkService.get('https://api.example.com/data');
+    print('Fetched: $data');
+  } catch (e) {
+    print('Error: $e');
+  }
+}
+
+void sendData() async {
+  try {
+    final payload = {
+      'username': 'test',
+      'password': 'secret'
+    };
+
+    final response = await NetworkService.post('https://api.example.com/login', payload);
+    print('Response: $response');
+  } catch (e) {
+    print('Error: $e');
+  }
+}

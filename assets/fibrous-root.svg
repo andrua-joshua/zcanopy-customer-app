@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="512" height="512" viewBox="0 0 240 240" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Fibrous root icon">
+  <g fill="none" stroke="#A9610E" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M60 60 C90 30,150 30,180 60" />
+    <path d="M70 70 C66 110,80 150,70 190" stroke-width="3"/>
+    <path d="M85 72 C82 110,95 145,95 185" stroke-width="3"/>
+    <path d="M100 74 C100 110,110 140,110 180" stroke-width="3"/>
+    <path d="M115 72 C118 108,130 145,130 182" stroke-width="3"/>
+    <path d="M130 70 C138 108,150 150,147 188" stroke-width="3"/>
+    <path d="M145 68 C155 110,162 150,160 190" stroke-width="3"/>
+    <path d="M30 200 L210 200" stroke="#6B3E1A" stroke-width="5" />
+  </g>
+</svg>

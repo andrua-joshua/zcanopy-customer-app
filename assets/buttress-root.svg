@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="512" height="512" viewBox="0 0 240 240" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Buttress root icon">
+  <g fill="none" stroke="#A9610E" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M120 30 L120 120" />
+    <path d="M80 120 C70 110,58 100,50 140 C62 160,74 180,84 196" />
+    <path d="M160 120 C170 110,182 100,190 140 C178 160,166 180,156 196" />
+    <path d="M90 200 L150 200" stroke-width="4" />
+    <path d="M30 208 L210 208" stroke="#6B3E1A" stroke-width="5" />
+  </g>
+</svg>
