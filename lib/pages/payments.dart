@@ -216,7 +216,7 @@ class _PaymentsPageState extends State<PaymentsPage> {
   void initState() {
     super.initState();
     _getTransations();
-    // Prefill retrieval fields from locally stored values (set after payment).
+    userID = database.get('userID');
     _codeCtrl.text = database.get('customerCode')?.toString() ?? '';
     _phoneRetrieveCtrl.text = database.get('phoneNumber')?.toString() ?? '';
     final storedCode = _codeCtrl.text;
@@ -226,7 +226,6 @@ class _PaymentsPageState extends State<PaymentsPage> {
     } else {
       loadInitialData();
     }
-    userID = database.get('userID');
 
     _scrollController.addListener(() {
       if (_scrollController.position.pixels >=
@@ -285,8 +284,35 @@ class _PaymentsPageState extends State<PaymentsPage> {
   }
 
   Future<void> loadInitialData() async {
-    await Future.delayed(const Duration(seconds: 2));
+    userID = database.get('userID');
 
+    try {
+      if (userID != null && userID.toString().isNotEmpty) {
+        final response = await _apiService.getTransactionRecords(
+          userId: userID.toString(),
+        );
+
+        if (response['success'] == true && response['data'] is List) {
+          final fetched = (response['data'] as List)
+              .map((e) => Map<String, dynamic>.from(e))
+              .toList();
+          if (mounted) {
+            setState(() {
+              _transactions = fetched;
+              displayedTXN = fetched.take(TXNPerPage).toList();
+              _isLoading = false;
+              isLoading = false;
+            });
+          }
+          return;
+        }
+      }
+    } catch (e) {
+      print('Load transactions error: $e');
+    }
+
+    if (!mounted) return;
+    await Future.delayed(const Duration(seconds: 2));
     setState(() {
       displayedTXN = _transactions.take(TXNPerPage).toList();
       isLoading = false;

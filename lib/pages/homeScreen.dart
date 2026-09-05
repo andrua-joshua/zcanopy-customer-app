@@ -182,14 +182,40 @@ class _HomePageState extends State<HomeScreen> {
       return;
     }
 
-    await Future.delayed(const Duration(seconds: 1));
-    if (mounted) {
-      setState(() {
-        displayedProperties = List.from(allProperties);
-        _rebuildReels();
-        isLoading = false;
-      });
+    try {
+      final response = await _apiService.getCustomerProperties(
+        sessionToken: _apiService.currentSessionId ?? '',
+        latitude: null,
+        longitude: null,
+        page: 1,
+        limit: 50,
+      );
+
+      if (response['success'] == true && response['properties'] is List) {
+        final fetched = (response['properties'] as List)
+            .map((e) => Map<String, dynamic>.from(e))
+            .toList();
+        if (mounted) {
+          setState(() {
+            allProperties = fetched;
+            displayedProperties = fetched;
+            _rebuildReels();
+            isLoading = false;
+          });
+        }
+        return;
+      }
+    } catch (e) {
+      print('Load properties error: $e');
     }
+
+    if (!mounted) return;
+    await Future.delayed(const Duration(seconds: 1));
+    setState(() {
+      displayedProperties = List.from(allProperties);
+      _rebuildReels();
+      isLoading = false;
+    });
   }
 
   Future<void> loadMoreData() async {

@@ -1,0 +1,363 @@
+{
+  "info": {
+    "name": "ZCanopy Customer App API",
+    "description": "Postman collection for ZCanopy Customer App endpoints",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "baseUrl": "http://localhost:4000/api",
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:4000/api"
+    },
+    {
+      "key": "accessToken",
+      "value": ""
+    },
+    {
+      "key": "sessionToken",
+      "value": ""
+    },
+    {
+      "key": "customerSessionToken",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "item": []
+    },
+    {
+      "name": "User Profile",
+      "item": [
+        {
+          "name": "Get User by ID",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/users/get-user-by-id",
+            "params": [
+              { "key": "id", "value": "user-id-123" }
+            ]
+          }
+        },
+        {
+          "name": "Update User Field",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/users/update-user-field",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"user-id-123\",\n  \"fields\": {\n    \"phoneNumber\": \"0700000000\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Update FCM Token",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/users/update_fcm_token",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"user-id-123\",\n  \"fcmToken\": \"new-fcm-token\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Properties",
+      "item": [
+        {
+          "name": "Search Properties",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/listings/search",
+            "params": [
+              { "key": "query", "value": "" },
+              { "key": "page", "value": "1" },
+              { "key": "limit", "value": "10" },
+              { "key": "location", "value": "Kampala" },
+              { "key": "minPrice", "value": "" },
+              { "key": "maxPrice", "value": "" },
+              { "key": "bedrooms", "value": "" },
+              { "key": "bathrooms", "value": "" },
+              { "key": "propertyType", "value": "House" }
+            ]
+          }
+        },
+        {
+          "name": "Nearby Properties",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/listings/nearby",
+            "params": [
+              { "key": "lat", "value": "0.3476" },
+              { "key": "longitude", "value": "32.5825" },
+              { "key": "radius", "value": "10" },
+              { "key": "limit", "value": "20" }
+            ]
+          }
+        },
+        {
+          "name": "Get Property by ID",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/listings/get_property_by_id",
+            "params": [
+              { "key": "id", "value": "prop-123" }
+            ]
+          }
+        },
+        {
+          "name": "Get Property Clients",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/listings/get_property_clients",
+            "params": [
+              { "key": "property_id", "value": "prop-123" }
+            ]
+          }
+        },
+        {
+          "name": "Get Customer Properties",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/customer/properties",
+            "params": [
+              { "key": "sessionToken", "value": "{{customerSessionToken}}" },
+              { "key": "page", "value": "1" },
+              { "key": "limit", "value": "10" },
+              { "key": "lat", "value": "0.3476" },
+              { "key": "lng", "value": "32.5825" },
+              { "key": "radiusKm", "value": "10" },
+              { "key": "propertyType", "value": "House" }
+            ]
+          }
+        },
+        {
+          "name": "Get Broker Properties",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/customer/broker-properties",
+            "params": [
+              { "key": "sessionToken", "value": "{{customerSessionToken}}" },
+              { "key": "brokerCode", "value": "BROKER123" },
+              { "key": "page", "value": "1" },
+              { "key": "limit", "value": "10" }
+            ]
+          }
+        },
+        {
+          "name": "Get Property Details",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/customer/properties/prop-123/details",
+            "params": [
+              { "key": "sessionToken", "value": "{{customerSessionToken}}" }
+            ]
+          }
+        },
+        {
+          "name": "Initiate Property Access Payment",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/customer/properties/access-payment",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sessionToken\": \"{{customerSessionToken}}\",\n  \"brokerCode\": \"BROKER123\",\n  \"propertyId\": \"prop-123\",\n  \"amount\": 5000,\n  \"customerEmail\": \"customer@example.com\",\n  \"customerPhone\": \"0700000000\",\n  \"customerName\": \"John Doe\",\n  \"careerExamples\": \"Real estate investor\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Bookings",
+      "item": [
+        {
+          "name": "Get Customer Bookings",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/customer/bookings",
+            "params": [
+              { "key": "sessionToken", "value": "{{customerSessionToken}}" },
+              { "key": "page", "value": "1" },
+              { "key": "limit", "value": "10" }
+            ]
+          }
+        },
+        {
+          "name": "Create Customer Booking",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/customer/bookings",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sessionToken\": \"{{customerSessionToken}}\",\n  \"propertyId\": \"prop-123\",\n  \"customerName\": \"John Doe\",\n  \"customerPhone\": \"0700000000\",\n  \"customerEmail\": \"john@example.com\",\n  \"date\": \"2024-12-01\",\n  \"amount\": 10000\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Get Booking by Code",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/bookings/code/{{txnCode}}",
+            "params": []
+          }
+        },
+        {
+          "name": "Get Bookings by Phone",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/bookings/phone",
+            "params": [
+              { "key": "customerPhone", "value": "0700000000" },
+              { "key": "page", "value": "1" },
+              { "key": "limit", "value": "10" }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Payments",
+      "item": [
+        {
+          "name": "Get Access Token",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/payment/access-token",
+            "params": []
+          }
+        },
+        {
+          "name": "Initiate Payment",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/payment/initiate_payment",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phoneNumber\": \"0700000000\",\n  \"amount\": 10000,\n  \"userId\": \"user-id-123\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Get Payment Status",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/payment/get_payment_status",
+            "params": [
+              { "key": "transaction_id", "value": "txn-123" }
+            ]
+          }
+        },
+        {
+          "name": "Get Transaction Records",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/payment/get_transaction_records",
+            "params": [
+              { "key": "user_id", "value": "user-id-123" },
+              { "key": "page", "value": "1" },
+              { "key": "limit", "value": "10" }
+            ]
+          }
+        },
+        {
+          "name": "Retrieve Booking by Code",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/customer/bookings/retrieve",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"CODE123\",\n  \"phoneNumber\": \"0700000000\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Retrieve Payment by Code",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/customer/payments/retrieve",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"CODE123\",\n  \"phoneNumber\": \"0700000000\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Notifications",
+      "item": [
+        {
+          "name": "Get Notifications",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/notifications/get_notifications",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sessionToken\": \"{{customerSessionToken}}\",\n  \"page\": 1,\n  \"limit\": 10,\n  \"status\": \"unread\",\n  \"type\": \"booking\",\n  \"channel\": \"push\",\n  \"read\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Mark Notification as Read",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/notifications/mark_as_read",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"notificationId\": \"notification-id-123\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

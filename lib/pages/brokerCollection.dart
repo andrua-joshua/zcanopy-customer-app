@@ -435,24 +435,31 @@ class _CollectionTileState extends State<_CollectionTile> {
                       fontSize: 12,
                     ),
                   ),
-                   if (hasVideo)
-                     Column(
-                       children: [
-                         if (_videoController != null &&
-                             _videoController!.value.isInitialized)
-                           AspectRatio(
-                             aspectRatio: _videoController!.value.aspectRatio,
-                             child: VideoPlayer(_videoController!),
-                           )
-                         else
-                           const SizedBox(
-                             height: 150,
-                             child: Center(
-                               child: CircularProgressIndicator(
-                                 color: AppColors.brown,
-                               ),
-                             ),
-                           ),
+                    if (hasVideo)
+                      Column(
+                        children: [
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: _videoController != null &&
+                                    _videoController!.value.isInitialized
+                                ? SizedBox(
+                                    height: 150,
+                                    width: double.infinity,
+                                    child: AspectRatio(
+                                      aspectRatio: _videoController!.value.aspectRatio,
+                                      child: VideoPlayer(_videoController!),
+                                    ),
+                                  )
+                                : const SizedBox(
+                                    height: 150,
+                                    width: double.infinity,
+                                    child: Center(
+                                      child: CircularProgressIndicator(
+                                        color: AppColors.brown,
+                                      ),
+                                    ),
+                                  ),
+                          ),
                          IconButton(
                            onPressed: () {
                              setState(() {

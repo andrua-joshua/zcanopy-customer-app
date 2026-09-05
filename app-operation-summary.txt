@@ -1,0 +1,190 @@
+Phase 1 — Splash & Auth
+Step	Screen	Purpose
+1	SplashScreen	Validates session on launch
+2	OnBoardingScreen	3 onboarding pages → "Get Started"
+3	profile.dart (ProfileFormPage)	Select account type (customer/broker)
+4	phoneOTP.dart (PhoneOtpScreen)	OTP verification → lands on BottomNavBar
+
+
+
+Phase 2 — Main App Shell
+Step	Tab	Screen	Purpose
+5	0	homeScreen.dart (HomeScreen)	Browse properties, filter, view videos
+6	1	explorer.dart (ExplorePage)	Search/filter properties by region
+7	2	userProfile.dart (ProfilePage)	Profile menu, bookings, payments, settings
+
+
+Phase 3 — From Home Tab (Tab 0)
+Step	Trigger	Destination Screen	Key APIs Hit
+8	App-bar bell icon	notifications.dart	GET /notifications/get_notifications
+9	Tap property card	brokerCollection.dart	GET /customer/broker-properties
+10	Tap "Book" in collection	Payment sheet → itemDetails.dart	POST /payment/initiate_payment, POST /customer/bookings
+11	Tap gallery image	itemDetails.dart → GalleryViewPage	GET /customer/properties/{id}/details
+12	Tap video play button	TikTok fullscreen overlay	—
+
+
+
+
+Phase 4 — From Explore Tab (Tab 1)
+Step	Trigger	Destination Screen	Key APIs Hit
+13	Tap property card	brokerCollection.dart	Same as step 9
+14	Apply filters	Filter bottom sheet	GET /listings/search, GET /listings/nearby
+
+
+
+
+Phase 5 — From Profile Tab (Tab 2)
+Step	Trigger	Destination Screen	Key APIs Hit
+15	"My Bookings"	bookings.dart	GET /bookings/get_bookings
+16	"Payments"	payments.dart	GET /payment/get_transaction_records
+17	"Notifications"	notifications.dart	Same as step 8
+18	"Settings"	settings.dart	POST /gate-way/log-out-user
+19	"Terms of Agreement"	terms.dart (TermsOfServicePage)	—
+20	"Help Center"	help.dart	POST /users/save-user-info
+
+
+
+
+
+Phase 6 — Deep Navigation Paths
+Step	Path	Destination	Key APIs Hit
+21	BrokerCollectionPage → Book → success	itemDetails.dart (PropertyDetailsPage)	Contact reveal flow
+22	PropertyDetailsPage → back	BottomNavBar (pushReplacement)	—
+23	Notification of type booking	bookings.dart	—
+24	Notification of type payment/transaction	payments.dart	—
+25	Notification of type propertyUpload/etc.	properties.dart	GET /gate-way/get-user-properties
+26	Settings → "Terms"	terms.dart	—
+27	Logout (ProfilePage)	OnBoardingScreen	POST /brokers/logout-user or POST /users/logout-user
+
+
+
+
+
+API Endpoints (Grouped by Feature)
+Auth & Session
+POST /customer/session
+POST /auth/signup
+POST /auth/login-to-account
+POST /auth/broker/setup
+POST /gate-way/get-email-verification-code
+POST /gate-way/verify-email-otp
+POST /auth/get-phone-verification-code
+POST /gate-way/verify-phone-otp
+POST /gate-way/resend-phone-otp
+POST /gate-way/check-session-id-validity
+POST /auth/update-account-type
+POST /users/request-reset-password-otp
+POST /users/request-account-deletion-otp
+
+
+
+User Management
+GET  /users/get-user-by-id
+GET  /users/get-user-by-email
+GET  /users/get-user-by-username
+POST /users/save-user-info
+POST /users/update-user-field
+POST /users/get-subscription-details
+POST /users/delete-by-id
+POST /users/logout-user
+POST /users/update_fcm_token
+POST /users/add-favourite
+POST /users/remove-favourite
+GET  /users/get-favourites
+
+
+Properties & Listings
+GET  /listings/get_properties
+GET  /listings/get_property_by_id
+GET  /listings/get_property_clients
+GET  /listings/search
+GET  /listings/nearby
+POST /properties
+POST /properties/{propertyId}
+POST /properties/{propertyId}/delete
+GET  /properties/resolve-location-name
+GET  /listings/get-item-details
+POST /listings/book-property
+POST /listings/delete-property
+POST /listings/approve-property
+GET  /customer/properties
+POST /customer/properties/access-payment
+GET  /customer/broker-properties
+GET  /customer/properties/{propertyId}/details
+
+
+Bookings
+GET  /bookings/get_bookings
+POST /bookings/create_booking
+POST /bookings/update_booking_status
+POST /bookings/cancel_booking
+POST /customer/bookings
+POST /customer/bookings/retrieve
+POST /gate-way/decline-booking-request
+
+
+Payments
+GET  /payment/access-token
+POST /payment/initiate_payment
+GET  /payment/get_payment_status
+GET  /payment/get_transaction_records
+POST /gate-way/initiate-payment
+POST /customer/properties/access-payment
+POST /customer/payments/retrieve
+
+
+Notifications
+GET  /notifications/get_notifications
+POST /notifications/mark_as_read
+GET  /gate-way/get-notifications
+
+
+Subscriptions
+GET  /subscriptions/get_packages
+POST /brokers/{userId}/subscribe
+POST /subscriptions/cancel
+
+
+
+Broker
+GET  /brokers/{brokerId}
+GET  /brokers/dashboard/{brokerId}
+POST /brokers/logout-user
+POST /brokers/unsubscribe-user
+POST /brokers/feedback/submit
+POST /brokers/withdraw
+
+
+Utilities
+GET  /gate-way/get-current-location
+GET  /gate-way/get-user-properties
+GET  /gate-way/get-graph-data
+
+
+
+
+
+
+
+
+Quick Reference: Navigation Graph (Text)
+
+SplashScreen
+  └─ OnBoardingScreen
+       └─ ProfileFormPage
+            └─ PhoneOtpScreen
+                 └─ BottomNavBar
+                      ├─ HomeScreen ──┬─ NotificationsPage
+                      │               ├─ BrokerCollectionPage ──┬─ PropertyDetailsPage
+                      │               │                          └─ GalleryViewPage
+                      │               └─ (video overlay)
+                      ├─ ExplorePage ──┐
+                      │                └─ BrokerCollectionPage (same chain)
+                      └─ ProfilePage ──┬─ BookingsPage
+                                        ├─ PaymentsPage
+                                        ├─ NotificationsPage
+                                        ├─ SettingsPage ──┬─ TermsOfServicePage
+                                        │                  └─ Theme picker
+                                        ├─ HelpCenterPage
+                                        ├─ PropertiesPage (via notification)
+                                        └─ (logout → OnBoardingScreen)

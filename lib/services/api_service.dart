@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:zcanopy/pages/network.dart';
+import 'package:zcanopy/services/cloudinary_service.dart';
 
 /// Central API Service for all backend communications
 /// This service wires up all Flutter app methods to the microservices backend
@@ -963,26 +964,29 @@ class ApiService {
   }
 
   /// Initiate property access payment
+  /// Backend: property.CreateCustomerBooking (Property Service)
   Future<Map<String, dynamic>> initiatePropertyAccessPayment({
     required String sessionToken,
-    required String brokerCode,
-    String? propertyId,
+    required String propertyId,
     required double amount,
     String? customerEmail,
     String? customerPhone,
     String? customerName,
-    String? careerExamples,
+    String? date,
+    String? reason,
+    String? status,
   }) async {
     try {
       final payload = {
         'sessionToken': sessionToken,
-        'brokerCode': brokerCode,
-        if (propertyId != null) 'propertyId': propertyId,
+        'propertyId': propertyId,
         'amount': amount,
         if (customerEmail != null) 'customerEmail': customerEmail,
         if (customerPhone != null) 'customerPhone': customerPhone,
         if (customerName != null) 'customerName': customerName,
-        if (careerExamples != null) 'careerExamples': careerExamples,
+        if (date != null) 'date': date,
+        if (reason != null) 'reason': reason,
+        if (status != null) 'status': status,
       };
 
       final response = await NetworkService.post(
@@ -1023,6 +1027,8 @@ class ApiService {
     String? customerEmail,
     required String date,
     required double amount,
+    String? reason,
+    String? status,
   }) async {
     try {
       final payload = {
@@ -1033,6 +1039,8 @@ class ApiService {
         if (customerEmail != null) 'customerEmail': customerEmail,
         'date': date,
         'amount': amount,
+        if (reason != null) 'reason': reason,
+        if (status != null) 'status': status,
       };
 
       final response = await NetworkService.post(

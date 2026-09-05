@@ -178,6 +178,7 @@ class _HelpCenterPageState extends State<HelpCenterPage>
                       Padding(
                         padding: const EdgeInsets.all(12.0),
                         child: TextField(
+                          style: const TextStyle(color: Colors.black),
                           decoration: InputDecoration(
                             hintText: "Search",
                             prefixIcon: Icon(Icons.search),
@@ -242,9 +243,10 @@ class _HelpCenterPageState extends State<HelpCenterPage>
                           key: _formKey,
                           child:Column(
                             children: [
-// Name
+                            // Name
                             TextFormField(
                               controller: nameController,
+                              style: const TextStyle(color: Colors.black),
                               decoration: InputDecoration(
                                 labelText: "Name",
                                 filled: true,
@@ -264,6 +266,7 @@ class _HelpCenterPageState extends State<HelpCenterPage>
                             // Email
                             TextFormField(
                               controller: emailController,
+                              style: const TextStyle(color: Colors.black),
                               decoration: InputDecoration(
                                 labelText: "Email",
                                 filled: true,
@@ -283,6 +286,7 @@ class _HelpCenterPageState extends State<HelpCenterPage>
                             // Subject
                             TextFormField(
                               controller: subjectController,
+                              style: const TextStyle(color: Colors.black),
                               decoration: InputDecoration(
                                 labelText: "Subject",
                                 filled: true,
@@ -303,6 +307,7 @@ class _HelpCenterPageState extends State<HelpCenterPage>
                             TextFormField(
                               controller: messageController,
                               maxLines: 5,
+                              style: const TextStyle(color: Colors.black),
                               decoration: InputDecoration(
                                 labelText: "Message",
                                 alignLabelWithHint: true,

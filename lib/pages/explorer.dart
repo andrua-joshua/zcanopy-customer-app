@@ -358,6 +358,7 @@ class _ExplorePageState extends State<ExplorePage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               TextField(
+                style: const TextStyle(color:Colors.black),
                 onChanged: (value) {
                   setState(() {
                     searchQuery = value;
@@ -366,6 +367,7 @@ class _ExplorePageState extends State<ExplorePage> {
                 },
                 decoration: InputDecoration(
                   hintText: "Search",
+                  
                   prefixIcon: const Icon(Icons.search),
                   suffixIcon: IconButton(
                     onPressed: openFilterSheet,
@@ -439,17 +441,43 @@ class _ExplorePageState extends State<ExplorePage> {
   }
 
   Future<void> loadInitialData() async {
-    //  var data = await fetchData(itemsPerPage);
-    //  allProperties = data.nearByProperties;
-    //  isLoadingMore=data.loadingMore;
+    try {
+      final url = Uri.parse(
+          "https://my-server-url/get-all-properties?region=wakiso&_limit=50&_page=1");
+      final response = await http.get(url);
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = json.decode(response.body);
+        if (data.isNotEmpty) {
+          final fetchedRegions = <String, List<Map<String, dynamic>>>{};
+          for (final item in data) {
+            final loc = item['location']?.toString() ?? 'Unknown';
+            fetchedRegions.putIfAbsent(loc, () => [])
+                .add(Map<String, dynamic>.from(item));
+          }
+          if (fetchedRegions.isNotEmpty) {
+            if (mounted) {
+              setState(() {
+                regions = fetchedRegions;
+                displayedRegions = Map.fromEntries(regions.entries.take(itemsPerPage));
+                isLoading = false;
+              });
+            }
+            regionsX = regions.keys.toList();
+            return;
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint("Network error: $e");
+    }
 
     await Future.delayed(const Duration(seconds: 2));
     setState(() {
       displayedRegions = Map.fromEntries(regions.entries.take(itemsPerPage));
       isLoading = false;
     });
-
-    regionsX = regions.keys.toList(); //extracting regions
+    regionsX = regions.keys.toList();
   }
 
   fetchData(itemsPerPage) async {
