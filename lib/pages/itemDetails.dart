@@ -79,6 +79,11 @@ class _PropertyDetailsPageState extends State<PropertyDetailsPage> {
 
   bool isFetchingItemData = false;
   String itemID1 = '';
+  List<Map<String, dynamic>> _comments = [];
+  double _averageRating = 0;
+  final TextEditingController _commentController = TextEditingController();
+  int _commentRating = 5;
+  bool _submittingComment = false;
 
   Future<void> _getItemDetails() async {
     if (isFetchingItemData) return;
@@ -427,9 +432,180 @@ class _PropertyDetailsPageState extends State<PropertyDetailsPage> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text("Could not open Google Maps")),
-          );
-        }
-      }
+    );
+  }
+}
+
+class _CommentsSection extends StatefulWidget {
+  final String propertyId;
+
+  const _CommentsSection({required this.propertyId});
+
+  @override
+  State<_CommentsSection> createState() => _CommentsSectionState();
+}
+
+class _CommentsSectionState extends State<_CommentsSection> {
+  List<Map<String, dynamic>> _comments = [];
+  double _averageRating = 0;
+  final TextEditingController _commentController = TextEditingController();
+  int _commentRating = 5;
+  bool _submittingComment = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadComments();
+  }
+
+  Future<void> _loadComments() async {
+    try {
+      final data = await ApiService().getPropertyComments(propertyId: widget.propertyId);
+      setState(() {
+        _comments = List<Map<String, dynamic>>.from(data['comments'] ?? []);
+        _averageRating = (data['averageRating'] ?? 0).toDouble();
+      });
+    } catch (e) {
+      print('Load comments error: $e');
+    }
+  }
+
+  Future<void> _submitComment() async {
+    if (_commentController.text.trim().isEmpty) return;
+    final session = SessionManager.getSessionID();
+    if (session == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Please login to comment")),
+      );
+      return;
+    }
+
+    setState(() => _submittingComment = true);
+    try {
+      final userId = Hive.box('myStore').get('userID')?.toString() ?? session;
+      await ApiService().addComment(
+        sessionToken: session,
+        propertyId: widget.propertyId,
+        customerName: userId,
+        customerPhone: userId,
+        comment: _commentController.text.trim(),
+        rating: _commentRating.toDouble(),
+      );
+      _commentController.clear();
+      await _loadComments();
+    } catch (e) {
+      print('Submit comment error: $e');
+    } finally {
+      setState(() => _submittingComment = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 100),
+        Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                "Reviews & Comments",
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+              ),
+              if (_averageRating > 0)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(
+                    "Average rating: ${_averageRating.toStringAsFixed(1)} / 5",
+                    style: TextStyle(color: Colors.grey.shade600),
+                  ),
+                ),
+              const SizedBox(height: 12),
+              if (_comments.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  child: Text(
+                    "No comments yet. Be the first to review this property.",
+                    style: TextStyle(color: Colors.grey.shade600),
+                  ),
+                )
+              else
+                ..._comments.map((c) => Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  c['customerName'] ?? 'Anonymous',
+                                  style: const TextStyle(fontWeight: FontWeight.w600),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(c['comment'] ?? ''),
+                                const SizedBox(height: 4),
+                                Text(
+                                  "Rating: ${c['rating'] ?? 0}/5",
+                                  style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    )),
+              const SizedBox(height: 16),
+              const Text(
+                "Add a review",
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _commentController,
+                decoration: const InputDecoration(
+                  hintText: "Share your experience...",
+                  border: OutlineInputBorder(),
+                ),
+                maxLines: 3,
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  const Text("Rating: "),
+                  DropdownButton<int>(
+                    value: _commentRating,
+                    items: [5, 4, 3, 2, 1]
+                        .map((r) => DropdownMenuItem(value: r, child: Text("$r")))
+                        .toList(),
+                    onChanged: (val) => setState(() => _commentRating = val ?? 5),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: _submittingComment ? null : _submitComment,
+                  child: Text(_submittingComment ? "Submitting..." : "Submit Review"),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -439,23 +615,84 @@ class _PropertyDetailsPageState extends State<PropertyDetailsPage> {
     }
   }
 
-  void _toggleFavorite() {
-    setState(() {
-      _isFavorited = !_isFavorited;
-    });
+  Future<void> _toggleFavorite() async {
+    final session = SessionManager.getSessionID();
+    if (session == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Please login to favorite properties")),
+      );
+      return;
+    }
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-            _isFavorited ? "Added to favorites" : "Removed from favorites"),
-        duration: const Duration(seconds: 1),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      ),
-    );
+    final api = ApiService();
+    final userId = database.get('userID')?.toString() ?? session;
+
+    try {
+      if (_isFavorited) {
+        await api.removeFromFavorites(userId: userId, propertyId: itemID1);
+      } else {
+        await api.addToFavorites(userId: userId, propertyId: itemID1);
+      }
+      setState(() {
+        _isFavorited = !_isFavorited;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+              _isFavorited ? "Added to favorites" : "Removed from favorites"),
+          duration: const Duration(seconds: 1),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        ),
+      );
+    } catch (e) {
+      print('Toggle favorite error: $e');
+    }
   }
 
-  void _openWhatsApp() async {
+  Future<void> _loadComments() async {
+    try {
+      final data = await ApiService().getPropertyComments(propertyId: itemID1);
+      setState(() {
+        _comments = List<Map<String, dynamic>>.from(data['comments'] ?? []);
+        _averageRating = (data['averageRating'] ?? 0).toDouble();
+      });
+    } catch (e) {
+      print('Load comments error: $e');
+    }
+  }
+
+  Future<void> _submitComment() async {
+    if (_commentController.text.trim().isEmpty) return;
+    final session = SessionManager.getSessionID();
+    if (session == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Please login to comment")),
+      );
+      return;
+    }
+
+    setState(() => _submittingComment = true);
+    try {
+      final userId = database.get('userID')?.toString() ?? session;
+      await ApiService().addComment(
+        sessionToken: session,
+        propertyId: itemID1,
+        customerName: userId,
+        customerPhone: userId,
+        comment: _commentController.text.trim(),
+        rating: _commentRating.toDouble(),
+      );
+      _commentController.clear();
+      await _loadComments();
+    } catch (e) {
+      print('Submit comment error: $e');
+    } finally {
+      setState(() => _submittingComment = false);
+    }
+  }
+
     final String message = "Hello, I'm interested in the property you posted.";
     final Uri whatsappUri =
         Uri.parse("https://wa.me/$_whatsappNumber?text=$message");
@@ -724,6 +961,8 @@ class _PropertyDetailsPageState extends State<PropertyDetailsPage> {
                 children: [
                   _DetailsHeader(
                     title: propertyTitle,
+                    isFavorited: _isFavorited,
+                    onFavoriteTap: _toggleFavorite,
                   ),
                 //  const SizedBox(height: 16),
                //   _FeatureStrip(features: _buildPropertyFeatures()),
@@ -998,9 +1237,12 @@ class _PropertyDetailsPageState extends State<PropertyDetailsPage> {
                               ],
                             ),
                           ),
-                  ),
-                  const SizedBox(height: 100),
-                ],
+                   ),
+                   const SizedBox(height: 100),
+                   _CommentsSection(
+                     propertyId: itemID1,
+                   ),
+                 ],
               ),
             ),
           ),
@@ -1053,9 +1295,13 @@ class _OverlayButton extends StatelessWidget {
 
 class _DetailsHeader extends StatelessWidget {
   final String title;
+  final bool isFavorited;
+  final VoidCallback? onFavoriteTap;
 
   const _DetailsHeader({
     required this.title,
+    this.isFavorited = false,
+    this.onFavoriteTap,
   });
 
   @override
@@ -1070,13 +1316,27 @@ class _DetailsHeader extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            title,
-            style: const TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.w700,
-              height: 1.2,
-            ),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.w700,
+                    height: 1.2,
+                  ),
+                ),
+              ),
+              if (onFavoriteTap != null)
+                IconButton(
+                  onPressed: onFavoriteTap,
+                  icon: Icon(
+                    Icons.favorite,
+                    color: isFavorited ? Colors.red : Colors.grey,
+                  ),
+                ),
+            ],
           ),
           const SizedBox(height: 12),
         ],

@@ -71,11 +71,6 @@ void main() async {
   await Hive.openBox('myStore');
   await Hive.openBox('notifications');
 
-  await CloudinaryService.configure(
-    cloudName: 'x318hfua',
-    uploadPreset: 'myFirstPreset',
-  );
-
   runApp(ZCanopy());
 }
 
@@ -216,7 +211,6 @@ import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:zcanopy/theme/app_theme.dart';
 import 'package:zcanopy/theme/theme_controller.dart';
 import 'package:zcanopy/services/property_monitor_service.dart';
-import 'package:zcanopy/services/cloudinary_service.dart';
 
 final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
     FlutterLocalNotificationsPlugin();

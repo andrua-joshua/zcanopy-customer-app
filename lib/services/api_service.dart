@@ -1,8 +1,8 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:zcanopy/pages/network.dart';
-import 'package:zcanopy/services/cloudinary_service.dart';
 
 /// Central API Service for all backend communications
 /// This service wires up all Flutter app methods to the microservices backend
@@ -766,7 +766,7 @@ class ApiService {
   }) async {
     try {
       final response = await NetworkService.get(
-        _buildUrl('/users/get-favourites?id=$userId&page=$page&limit=$limit'),
+        _buildUrl('/web/customer/favorites?page=$page&limit=$limit'),
       );
       return response;
     } catch (e) {
@@ -786,7 +786,7 @@ class ApiService {
         'propertyId': propertyId,
       };
       final response = await NetworkService.post(
-        _buildUrl('/users/add-favourite'),
+        _buildUrl('/web/customer/favorites/toggle'),
         payload,
       );
       return response;
@@ -807,12 +807,122 @@ class ApiService {
         'propertyId': propertyId,
       };
       final response = await NetworkService.post(
-        _buildUrl('/users/remove-favourite'),
+        _buildUrl('/web/customer/favorites/toggle'),
         payload,
       );
       return response;
     } catch (e) {
       print('Remove from favorites error: $e');
+      rethrow;
+    }
+  }
+
+  // ==================== SEARCH TRACKING ====================
+
+  /// Record customer search
+  Future<Map<String, dynamic>> recordSearch({
+    required String sessionToken,
+    String? query,
+    String? location,
+    double? radius,
+    String? propertyType,
+    Map<String, dynamic>? filters,
+    List<String>? resultPropertyIds,
+    int? resultCount,
+    double? minPrice,
+    double? maxPrice,
+    String? subCounty,
+    String? district,
+  }) async {
+    try {
+      final payload = {
+        'sessionToken': sessionToken,
+        if (query != null) 'query': query,
+        if (location != null) 'location': location,
+        if (radius != null) 'radius': radius,
+        if (propertyType != null) 'propertyType': propertyType,
+        if (filters != null) 'filters': filters,
+        if (resultPropertyIds != null) 'resultPropertyIds': resultPropertyIds,
+        if (resultCount != null) 'resultCount': resultCount,
+        if (minPrice != null) 'minPrice': minPrice,
+        if (maxPrice != null) 'maxPrice': maxPrice,
+        if (subCounty != null) 'subCounty': subCounty,
+        if (district != null) 'district': district,
+      };
+      final response = await NetworkService.post(
+        _buildUrl('/web/customer/search/record'),
+        payload,
+      );
+      return response;
+    } catch (e) {
+      print('Record search error: $e');
+      rethrow;
+    }
+  }
+
+  /// Get customer searches
+  Future<Map<String, dynamic>> getCustomerSearches({
+    required String sessionToken,
+    int page = 1,
+    int limit = 10,
+  }) async {
+    try {
+      final response = await NetworkService.get(
+        _buildUrl('/web/customer/searches?page=$page&limit=$limit'),
+      );
+      return response;
+    } catch (e) {
+      print('Get customer searches error: $e');
+      rethrow;
+    }
+  }
+
+  // ==================== COMMENTS & RATINGS ====================
+
+  /// Add property comment and rating
+  Future<Map<String, dynamic>> addComment({
+    required String sessionToken,
+    required String propertyId,
+    required String customerName,
+    required String customerPhone,
+    String? customerEmail,
+    required String comment,
+    double? rating,
+  }) async {
+    try {
+      final payload = {
+        'sessionToken': sessionToken,
+        'propertyId': propertyId,
+        'customerName': customerName,
+        'customerPhone': customerPhone,
+        if (customerEmail != null) 'customerEmail': customerEmail,
+        'comment': comment,
+        if (rating != null) 'rating': rating,
+      };
+      final response = await NetworkService.post(
+        _buildUrl('/web/customer/comments'),
+        payload,
+      );
+      return response;
+    } catch (e) {
+      print('Add comment error: $e');
+      rethrow;
+    }
+  }
+
+  /// Get property comments
+  Future<Map<String, dynamic>> getPropertyComments({
+    required String propertyId,
+    int page = 1,
+    int limit = 10,
+  }) async {
+    try {
+      final response = await NetworkService.get(
+        _buildUrl('/web/customer/properties/$propertyId/comments?page=$page&limit=$limit'),
+      );
+      return response;
+    } catch (e) {
+      print('Get property comments error: $e');
       rethrow;
     }
   }
@@ -1298,6 +1408,80 @@ class ApiService {
     } catch (e) {
       print('Withdraw broker error: $e');
       rethrow;
+    }
+  }
+
+  // ==================== UPLOAD METHODS ====================
+
+  /// Get a presigned upload URL and upload a file directly to DigitalOcean Spaces.
+  /// Returns the public CDN URL of the uploaded file.
+  Future<Map<String, dynamic>> uploadFile({
+    required String filePath,
+    String? contentType,
+    String folder = 'properties',
+  }) async {
+    try {
+      final file = File(filePath);
+      final filename = file.path.split(Platform.pathSeparator).last;
+      final mimeType = contentType ?? _guessMimeType(filename);
+
+      final presignResponse = await NetworkService.post(
+        _buildUrl('/upload/presign'),
+        {
+          'filename': filename,
+          'contentType': mimeType,
+          'folder': folder,
+        },
+      );
+
+      final uploadUrl = presignResponse['uploadUrl'] as String;
+      final publicUrl = presignResponse['publicUrl'] as String;
+
+      final fileBytes = await file.readAsBytes();
+      final uploadRes = await http.put(
+        Uri.parse(uploadUrl),
+        headers: {'Content-Type': mimeType},
+        body: fileBytes,
+      );
+
+      if (uploadRes.statusCode < 200 || uploadRes.statusCode >= 300) {
+        throw Exception('Upload failed: ${uploadRes.statusCode}');
+      }
+
+      return {'publicUrl': publicUrl, 'key': presignResponse['key']};
+    } catch (e) {
+      print('Upload file error: $e');
+      rethrow;
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> uploadMultipleFiles({
+    required List<String> filePaths,
+    String? contentType,
+    String folder = 'properties',
+  }) async {
+    final results = <Map<String, dynamic>>[];
+    for (final path in filePaths) {
+      final result = await uploadFile(filePath: path, contentType: contentType, folder: folder);
+      results.add(result);
+    }
+    return results;
+  }
+
+  String _guessMimeType(String filename) {
+    final ext = filename.split('.').last.toLowerCase();
+    switch (ext) {
+      case 'jpg':
+      case 'jpeg':
+        return 'image/jpeg';
+      case 'png':
+        return 'image/png';
+      case 'mp4':
+        return 'video/mp4';
+      case 'mov':
+        return 'video/quicktime';
+      default:
+        return 'application/octet-stream';
     }
   }
 

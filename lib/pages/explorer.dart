@@ -357,15 +357,23 @@ class _ExplorePageState extends State<ExplorePage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              TextField(
-                style: const TextStyle(color:Colors.black),
-                onChanged: (value) {
-                  setState(() {
-                    searchQuery = value;
-                    applyFilters();
-                  });
-                },
-                decoration: InputDecoration(
+               TextField(
+                 style: const TextStyle(color:Colors.black),
+                 onChanged: (value) {
+                   setState(() {
+                     searchQuery = value;
+                     applyFilters();
+                   });
+                   final session = SessionManager.getSessionID();
+                   if (session != null && value.isNotEmpty) {
+                     ApiService().recordSearch(
+                       sessionToken: session,
+                       query: value,
+                       resultCount: _items.length,
+                     ).catchError((e) => print('Record search failed: $e'));
+                   }
+                 },
+                 decoration: InputDecoration(
                   hintText: "Search",
                   
                   prefixIcon: const Icon(Icons.search),
