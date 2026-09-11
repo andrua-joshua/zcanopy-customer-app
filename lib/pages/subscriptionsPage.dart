@@ -7,6 +7,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:zcanopy/pages/session.dart';
 import 'package:zcanopy/services/api_service.dart';
 import 'package:zcanopy/utils/theme_extensions.dart';
+import 'package:zcanopy/utils/currency.dart';
 
 class SubscriptionPage extends StatefulWidget {
   const SubscriptionPage({super.key});
@@ -239,11 +240,7 @@ class _SubscriptionPageState extends State<SubscriptionPage> {
     final price = tier['price'] ?? 0;
     final currency = tier['currency'] ?? 'UGX';
     if (price == 0) return 'Free';
-    final grouped = price
-        .toString()
-        .replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-            (m) => '${m[1]},');
-    return '$currency $grouped';
+    return '$currency ${formatThousands(price)}';
   }
 
   Future<void> _forceLogout() async {

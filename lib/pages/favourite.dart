@@ -4,6 +4,7 @@ import 'package:zcanopy/pages/loadIndicator.dart';
 import 'package:zcanopy/pages/network.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:zcanopy/pages/session.dart';
+import 'package:zcanopy/utils/currency.dart';
 import 'package:zcanopy/utils/theme_extensions.dart';
 import 'package:zcanopy/services/api_service.dart';
 
@@ -301,7 +302,7 @@ class _FavouritePageState extends State<FavouritePage> {
               ),
             ),
             Text(
-              "Price: UGX ${favourite["price"]}",
+              "Price: ${formatUgx(favourite["price"])}",
               style: TextStyle(
                 fontSize: 13,
                 color: context.isDarkMode ? Colors.grey.shade400 : Colors.grey[700],

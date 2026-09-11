@@ -1,19 +1,19 @@
 ﻿import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:video_player/video_player.dart';
+import 'package:motion_tab_bar_v2/motion-tab-bar.dart';
 import 'package:zcanopy/pages/welcome.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:zcanopy/pages/userProfile.dart';
 import 'package:zcanopy/pages/explorer.dart';
-import 'package:zcanopy/pages/subscriptionsPage.dart';
-import 'package:zcanopy/pages/loadIndicator.dart';
 import 'package:zcanopy/pages/itemDetails.dart';
-import 'package:zcanopy/services/property_monitor_service.dart';
-import 'package:zcanopy/pages/brokerCollection.dart';
+import 'package:zcanopy/pages/loadIndicator.dart';
+import 'package:zcanopy/services/api_service.dart';
 import 'package:zcanopy/pages/notifications.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:zcanopy/utils/currency.dart';
 import 'package:zcanopy/pages/session.dart';
-import 'package:zcanopy/theme/theme_controller.dart';
 import 'package:zcanopy/services/api_service.dart';
 import 'package:zcanopy/widgets/tiktok_video_reel.dart';
 
@@ -28,6 +28,18 @@ class _HomePageState extends State<HomeScreen> {
   final ScrollController _scrollController = ScrollController();
   final _apiService = ApiService();
   final database = Hive.box("myStore");
+
+  static const Map<String, IconData> _categoryIcons = {
+    'All': Icons.grid_view,
+    'House': Icons.home,
+    'Apartment': Icons.apartment,
+    'Condominium': Icons.villa,
+    'Office': Icons.work,
+    'Shop': Icons.store,
+    'Land': Icons.terrain,
+    'Warehouse': Icons.warehouse,
+    'Hotel': Icons.hotel,
+  };
 
   List<Map<String, dynamic>> allProperties = [
     {
@@ -114,10 +126,28 @@ class _HomePageState extends State<HomeScreen> {
 
   List<Map<String, dynamic>> displayedProperties = [];
   List<Map<String, dynamic>> reels = [];
+  final Set<String> _savedProperties = {};
+
+  void _toggleSaveProperty(String id) {
+    final prefs = Hive.box('myStore');
+    if (_savedProperties.contains(id)) {
+      _savedProperties.remove(id);
+    } else {
+      _savedProperties.add(id);
+    }
+    prefs.put('savedProperties', _savedProperties.toList());
+    setState(() {});
+  }
+
+  bool _isSaved(String id) => _savedProperties.contains(id);
+
+  final ScrollController _reelScrollController = ScrollController();
+  final Map<int, VideoPlayerController> _reelControllers = {};
+  int _activeReelIndex = -1;
+  final Set<int> _initializedReels = {};
 
   String selectedType = 'All';
   double maxPrice = 200000;
-  String searchQuery = '';
   String selectedLocation = 'All';
   String selectedSubCounty = 'All';
   String selectedDistrict = 'All';
@@ -154,7 +184,63 @@ class _HomePageState extends State<HomeScreen> {
     }
   }
 
+  void _initReelControllers() {
+    for (int i = 0; i < reels.length; i++) {
+      if (!_initializedReels.contains(i)) {
+        final url = reels[i]['videoUrl'] ?? '';
+        if (url.isEmpty) continue;
+        final controller = VideoPlayerController.networkUrl(Uri.parse(url));
+        controller.setLooping(true);
+        controller.setVolume(0);
+        controller.initialize().then((_) {
+          if (mounted) {
+            _initializedReels.add(i);
+            setState(() {});
+          }
+        }).catchError((e) {
+          debugPrint('Reel $i init error: $e');
+        });
+        _reelControllers[i] = controller;
+      }
+    }
+  }
+
+  void _onReelScroll() {
+    if (!mounted || reels.isEmpty) return;
+    final controller = _reelScrollController;
+    final maxScroll = controller.position.maxScrollExtent;
+    if (maxScroll <= 0) return;
+    final offset = controller.offset;
+    final cardWidth = 150.0 + 12.0;
+    final index = ((offset / cardWidth) + 0.5).floor().clamp(0, reels.length - 1);
+    if (index != _activeReelIndex) {
+      _pauseAllReels();
+      final c = _reelControllers[index];
+      if (c != null && c.value.isInitialized) {
+        c.seekTo(const Duration(seconds: 0));
+        c.play();
+      }
+      setState(() => _activeReelIndex = index);
+    }
+  }
+
+  void _pauseAllReels() {
+    for (final c in _reelControllers.values) {
+      if (c.value.isInitialized) c.pause();
+    }
+  }
+
+  void _disposeReelControllers() {
+    for (final c in _reelControllers.values) {
+      c.dispose();
+    }
+    _reelControllers.clear();
+    _initializedReels.clear();
+  }
+
   void _rebuildReels() {
+    _disposeReelControllers();
+    _activeReelIndex = -1;
     final list = <Map<String, dynamic>>[];
     for (final p in displayedProperties) {
       final video = p['video'];
@@ -173,6 +259,7 @@ class _HomePageState extends State<HomeScreen> {
       }
     }
     reels = list;
+    _initReelControllers();
   }
 
   Future<void> loadInitialData() async {
@@ -248,13 +335,6 @@ class _HomePageState extends State<HomeScreen> {
       displayedProperties = allProperties.where((prop) {
         final matchesType =
             selectedType == 'All' || prop['type'] == selectedType;
-        final matchesSearch = (prop['name'] as String)
-            .toLowerCase()
-            .contains(searchQuery.toLowerCase()) ||
-            (prop['brokerName'] as String?)
-                ?.toLowerCase()
-                .contains(searchQuery.toLowerCase()) ==
-                true;
         final matchesLocation =
             selectedLocation == 'All' || prop['location'] == selectedLocation;
         final matchesSub = selectedSubCounty == 'All' ||
@@ -264,7 +344,6 @@ class _HomePageState extends State<HomeScreen> {
         final matchesPrice = (minPrice == null || prop['price'] >= minPrice) &&
             (maxPriceVal == null || prop['price'] <= maxPriceVal);
         return matchesType &&
-            matchesSearch &&
             matchesLocation &&
             matchesSub &&
             matchesDistrict &&
@@ -427,6 +506,18 @@ class _HomePageState extends State<HomeScreen> {
     );
   }
 
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    _reelScrollController.dispose();
+    _disposeReelControllers();
+    super.dispose();
+  }
+
+  Future<void> _onRefresh() async {
+    await loadInitialData();
+  }
+
   Widget buildShimmerCard() {
     return Shimmer.fromColors(
       baseColor: Colors.grey.shade300,
@@ -460,71 +551,92 @@ class _HomePageState extends State<HomeScreen> {
         const SizedBox(height: 10),
         SizedBox(
           height: 260,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            itemCount: reels.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 12),
-            itemBuilder: (context, index) {
-              final reel = reels[index];
-              return GestureDetector(
-                onTap: () => _openReelFullscreen(initial: index),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(16),
-                  child: SizedBox(
-                    width: 150,
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        Container(color: Colors.black),
-                        const Center(
-                          child: Icon(
-                            Icons.play_circle_fill,
-                            color: Colors.white70,
-                            size: 42,
-                          ),
-                        ),
-                        Container(
-                          decoration: const BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                              colors: [Colors.transparent, Colors.black54],
+          child: NotificationListener<ScrollNotification>(
+            onNotification: (notification) {
+              _onReelScroll();
+              return false;
+            },
+            child: ListView.separated(
+              controller: _reelScrollController,
+              scrollDirection: Axis.horizontal,
+              itemCount: reels.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 12),
+              itemBuilder: (context, index) {
+                final reel = reels[index];
+                final controller = _reelControllers[index];
+                final isActive = index == _activeReelIndex;
+                final isInit = controller?.value.isInitialized ?? false;
+                return GestureDetector(
+                  onTap: () => _openReelFullscreen(initial: index),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(16),
+                    child: SizedBox(
+                      width: 150,
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          Container(color: Colors.black12),
+                          if (isInit)
+                            Center(
+                              child: AspectRatio(
+                                aspectRatio: controller!.value.aspectRatio,
+                                child: VideoPlayer(controller),
+                              ),
+                            ),
+                          if (!isActive)
+                            Container(
+                              color: Colors.black.withValues(alpha: 0.35),
+                              child: const Center(
+                                child: Icon(
+                                  Icons.play_circle_fill,
+                                  color: Colors.white,
+                                  size: 38,
+                                ),
+                              ),
+                            ),
+                          Container(
+                            decoration: const BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                colors: [Colors.transparent, Colors.black54],
+                              ),
                             ),
                           ),
-                        ),
-                        Positioned(
-                          left: 10,
-                          right: 10,
-                          bottom: 10,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                reel['title'] ?? '',
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 13,
+                          Positioned(
+                            left: 10,
+                            right: 10,
+                            bottom: 10,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  reel['title'] ?? '',
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 13,
+                                  ),
                                 ),
-                              ),
-                              Text(
-                                reel['subCounty'] ?? '',
-                                style: const TextStyle(
-                                  color: Colors.white70,
-                                  fontSize: 11,
+                                Text(
+                                  reel['subCounty'] ?? '',
+                                  style: const TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 11,
+                                  ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
-                ),
-              );
-            },
+                );
+              },
+            ),
           ),
         ),
       ],
@@ -548,9 +660,9 @@ class _HomePageState extends State<HomeScreen> {
             ),
             Positioned(
               top: 40,
-              right: 16,
+              left: 16,
               child: IconButton(
-                icon: const Icon(Icons.close, color: Colors.white),
+                icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
                 onPressed: () => Navigator.pop(context),
               ),
             ),
@@ -560,140 +672,61 @@ class _HomePageState extends State<HomeScreen> {
     );
   }
 
-  void _openFeedbackDialog() {
-    final contentCtrl = TextEditingController();
-    bool submitting = false;
-
-    showDialog(
-      context: context,
-      builder: (ctx) {
-        return StatefulBuilder(
-          builder: (context, setDialog) {
-            return AlertDialog(
-              title: const Text("Send Feedback"),
-              content: TextField(
-                controller: contentCtrl,
-                maxLines: 5,
-                minLines: 3,
-                decoration: const InputDecoration(
-                  labelText: "Your feedback",
-                  alignLabelWithHint: true,
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: submitting ? null : () => Navigator.pop(context),
-                  child: const Text("Cancel"),
-                ),
-                ElevatedButton(
-                  onPressed: submitting
-                      ? null
-                      : () async {
-                          final content = contentCtrl.text.trim();
-                          if (content.isEmpty) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text("Please enter your feedback"),
-                              ),
-                            );
-                            return;
-                          }
-
-                          setDialog(() => submitting = true);
-                          try {
-                            await _apiService.submitBrokerFeedback(
-                              brokerCode:
-                                  database.get('brokerCode')?.toString() ?? '',
-                              email: database.get('email')?.toString() ?? '',
-                              phone:
-                                  database.get('phoneNumber')?.toString() ?? '',
-                              content: content,
-                            );
-                            if (mounted) {
-                              Navigator.pop(context);
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text("Feedback sent. Thank you!"),
-                                ),
-                              );
-                            }
-                          } catch (e) {
-                            debugPrint('Submit feedback error: $e');
-                            if (mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text("Failed to send feedback: $e"),
-                                ),
-                              );
-                            }
-                          } finally {
-                            if (mounted) setDialog(() => submitting = false);
-                          }
-                        },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor:
-                        const Color.fromARGB(255, 169, 97, 14),
-                  ),
-                  child: submitting
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(
-                            color: Colors.white,
-                            strokeWidth: 2,
-                          ),
-                        )
-                      : const Text("Submit",
-                          style: TextStyle(color: Colors.white)),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
-
   Widget _buildPropertyCard(Map<String, dynamic> property,
       {EdgeInsetsGeometry? margin}) {
     final bookState =
         property['bookState'] as Map<String, dynamic>? ?? {};
     final isBooked = bookState['isBooked'] == true;
-    final bookingCount = bookState['bookingCount'] ?? 0;
     final hasVideo =
         property['video'] != null && property['video'].toString().isNotEmpty;
-
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final cardColor = isDark
         ? const Color(0xFF2A2A2A)
-        : const Color.fromARGB(160, 254, 251, 248);
+        : Colors.white;
+
+    void openDetails() => Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => PropertyDetailsPage(property: property),
+          ),
+        );
 
     return Card(
       color: cardColor,
       margin: margin ?? const EdgeInsets.only(bottom: 16),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       clipBehavior: Clip.antiAlias,
+      elevation: isDark ? 0 : 2,
+      shadowColor: Colors.black.withValues(alpha: 0.08),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Stack(
             children: [
               GestureDetector(
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => BrokerCollectionPage(
-                      brokerCode: property['brokerCode'] ?? '',
-                      brokerName: property['brokerName'] ?? 'Broker',
-                    ),
-                  ),
-                ),
+                onTap: openDetails,
                 child: Image.network(
                   property['image'],
                   height: 200,
                   width: double.infinity,
                   fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => Container(
+                    height: 200,
+                    color: Colors.grey.shade200,
+                    child: const Center(
+                      child: Icon(Icons.home_outlined, size: 40, color: Colors.grey),
+                    ),
+                  ),
+                ),
+              ),
+              Container(
+                height: 200,
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Colors.transparent, Colors.black26],
+                  ),
                 ),
               ),
               Positioned(
@@ -706,14 +739,45 @@ class _HomePageState extends State<HomeScreen> {
                     color: property['status'] == 'Available'
                         ? Colors.green
                         : Colors.red,
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
                     property['status'],
                     style: const TextStyle(
-                        color: Colors.white, fontSize: 12),
+                        color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600),
                   ),
                 ),
+              ),
+              Positioned(
+                top: 10,
+                left: 10,
+                  child: GestureDetector(
+                    onTap: () => _toggleSaveProperty(property['id']),
+                    child: Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Colors.white.withValues(alpha: 0.9),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.15),
+                            blurRadius: 6,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: Icon(
+                        _isSaved(property['id'])
+                            ? Icons.bookmark
+                            : Icons.bookmark_border,
+                        color: _isSaved(property['id'])
+                            ? const Color.fromARGB(255, 169, 97, 14)
+                            : Colors.grey.shade600,
+                        size: 20,
+                      ),
+                    ),
+                  ),
               ),
               if (hasVideo)
                 Positioned(
@@ -727,114 +791,108 @@ class _HomePageState extends State<HomeScreen> {
                     child: Container(
                       padding: const EdgeInsets.all(6),
                       decoration: BoxDecoration(
-                        color: Colors.black54,
+                        color: Colors.black.withValues(alpha: 0.6),
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: const Icon(Icons.play_circle_fill,
-                          color: Colors.white, size: 26),
+                          color: Colors.white, size: 24),
                     ),
                   ),
                 ),
             ],
           ),
           Padding(
-            padding: const EdgeInsets.all(10),
+            padding: const EdgeInsets.all(14),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  property['name'],
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 15,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: const Color.fromARGB(255, 169, 97, 14),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    property['brokerName']?.toString() ?? 'Broker',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        property['name'],
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 15,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
+                    if (isBooked)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: Colors.red.shade50,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          "Booked",
+                          style: TextStyle(
+                            color: Colors.red.shade700,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  formatUgx(property['price']),
+                  style: const TextStyle(
+                    color: Color.fromARGB(255, 169, 97, 14),
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
                   ),
                 ),
-                const SizedBox(height: 3),
+                const SizedBox(height: 6),
                 Row(
                   children: [
-                    const Icon(Icons.location_on,
-                        size: 13, color: Colors.grey),
-                    const SizedBox(width: 3),
+                    const Icon(Icons.location_on_outlined,
+                        size: 14, color: Colors.grey),
+                    const SizedBox(width: 4),
                     Expanded(
                       child: Text(
                         "${property['subCounty']}, ${property['district']}",
                         style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 3),
-                Text(
-                  "${property['price']} UGX",
-                  style: const TextStyle(
-                    color: Color.fromARGB(255, 169, 97, 14),
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  property['description'],
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                      color: Colors.grey.shade600, fontSize: 11),
-                ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 10),
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Chip(
-                      label: Text(
-                        isBooked
-                            ? "Booked ($bookingCount)"
-                            : "Available",
-                        style: const TextStyle(fontSize: 10),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: const Color.fromARGB(255, 169, 97, 14).withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(8),
                       ),
-                      backgroundColor: isBooked
-                          ? Colors.red.shade50
-                          : Colors.green.shade50,
-                      visualDensity: VisualDensity.compact,
-                    ),
-                    OutlinedButton.icon(
-                      onPressed: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => BrokerCollectionPage(
-                            brokerCode: property['brokerCode'] ?? '',
-                            brokerName:
-                                property['brokerName'] ?? 'Broker',
-                          ),
+                      child: Text(
+                        property['brokerName']?.toString() ?? 'Broker',
+                        style: const TextStyle(
+                          color: Color.fromARGB(255, 169, 97, 14),
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
+                    ),
+                    const Spacer(),
+                    OutlinedButton.icon(
+                      onPressed: openDetails,
                       icon: const Icon(Icons.visibility_outlined, size: 16),
-                      label: const Text(
-                        "View",
-                        style: TextStyle(fontSize: 12),
-                      ),
+                      label: const Text("View", style: TextStyle(fontSize: 12)),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: const Color.fromARGB(255, 169, 97, 14),
                         side: const BorderSide(
                           color: Color.fromARGB(255, 169, 97, 14),
                         ),
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 4),
+                            horizontal: 14, vertical: 6),
                         visualDensity: VisualDensity.compact,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(20),
@@ -868,37 +926,86 @@ class _HomePageState extends State<HomeScreen> {
                   fit: BoxFit.cover,
                 ),
               ),
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(8),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        child: RefreshIndicator(
+          onRefresh: _onRefresh,
+          color: const Color.fromARGB(255, 169, 97, 14),
+          child: CustomScrollView(
+            controller: _scrollController,
+            slivers: [
+            SliverAppBar(
+              pinned: true,
+              centerTitle: false,
+              automaticallyImplyLeading: false,
+              backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+              surfaceTintColor: Colors.transparent,
+              elevation: 0,
+              toolbarHeight: 56,
+              titleSpacing: 0,
+              title: Padding(
+                padding: const EdgeInsets.only(left: 12, right: 8),
+                child: Row(
                   children: [
-                    Expanded(
-                      child: Text(
-                        "Discover Properties",
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600,
+                    Container(
+                      width: 42,
+                      height: 42,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Colors.white,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.25),
+                            blurRadius: 8,
+                            offset: const Offset(0, 3),
+                          ),
+                        ],
+                      ),
+                      padding: const EdgeInsets.all(5),
+                      child: ClipOval(
+                        child: Image.asset(
+                          'assets/midLOGO.png',
+                          fit: BoxFit.contain,
                         ),
                       ),
                     ),
-                    IconButton(
-                      icon: Icon(
-                        Theme.of(context).brightness == Brightness.dark
-                            ? Icons.light_mode_outlined
-                            : Icons.dark_mode_outlined,
+                    const SizedBox(width: 10),
+                    Text(
+                      "ZCanopy",
+                      style: TextStyle(
+                        fontSize: 26,
+                        fontWeight: FontWeight.w700,
+                        color: isDark ? Colors.white : Colors.black87,
                       ),
-                      tooltip: 'Toggle theme',
-                      onPressed: () async {
-                        await themeController.toggleLightDark();
-                      },
                     ),
-                    IconButton(
+                  ],
+                ),
+              ),
+              actions: [
+                Padding(
+                  padding: const EdgeInsets.only(right: 12),
+                  child: Container(
+                    width: 42,
+                    height: 42,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: isDark
+                        ? const Color(0xFF2A2A2A)
+                        : Colors.grey.shade100,
+                    border: Border.all(
+                      color: Colors.grey.shade300,
+                      width: 1,
+                    ),
+                    boxShadow: [
+                        BoxShadow(
+                          color:
+                              Colors.black.withValues(alpha: 0.1),
+                          blurRadius: 6,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: IconButton(
                       icon: const Icon(Icons.notifications_outlined),
+                      tooltip: 'Notifications',
                       onPressed: () {
                         Navigator.push(
                           context,
@@ -908,133 +1015,188 @@ class _HomePageState extends State<HomeScreen> {
                         );
                       },
                     ),
-                    IconButton(
-                      icon: const Icon(Icons.feedback_outlined),
-                      tooltip: 'Send feedback',
-                      onPressed: _openFeedbackDialog,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-
-                // Search Bar
-                TextField(
-                  onChanged: (value) {
-                    setState(() {
-                      searchQuery = value;
-                      applyFilters();
-                    });
-                  },
-                  decoration: InputDecoration(
-                    prefixIcon: const Icon(Icons.search),
-                    hintText: "Search by title or broker",
-                    hintStyle: const TextStyle(color: Colors.black54),
-                    suffixIcon: IconButton(
-                      icon: const Icon(Icons.filter_list),
-                      onPressed: openFilterSheet,
-                    ),
-                    filled: true,
-                    fillColor: Colors.white,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(20),
-                      borderSide: BorderSide.none,
-                    ),
                   ),
-                  style: const TextStyle(color: Colors.black),
-                ),
-                const SizedBox(height: 16),
-
-                // Horizontal Selector
-                SizedBox(
-                  height: 40,
-                  child: ListView(
-                    scrollDirection: Axis.horizontal,
-                    children: [
-                      'All',
-                      'House',
-                      'Apartment',
-                      'Condominium'
-                    ].map((type) {
-                      final isSelected = selectedType == type;
-                      return GestureDetector(
-                        onTap: () {
-                          setState(() {
-                            selectedType = type;
-                            applyFilters();
-                          });
-                        },
-                        child: Container(
-                          margin: const EdgeInsets.only(right: 10),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 20,
-                            vertical: 10,
-                          ),
-                          decoration: BoxDecoration(
-                            color: isSelected
-                                ? const Color.fromARGB(255, 169, 97, 14)
-                                : Colors.white,
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Text(
-                            type,
-                            style: TextStyle(
-                              color: isSelected
-                                  ? Colors.white
-                                  : Colors.grey.shade800,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ),
-                      );
-                    }).toList(),
-                  ),
-                ),
-
-                const SizedBox(height: 20),
-                const Text(
-                  "Your Nearby",
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 10),
-
-                // Property List with Infinite Scroll
-                Expanded(
-                  child: isLoading
-                      ? ListView.builder(
-                          itemCount: 3,
-                          itemBuilder: (_, __) => buildShimmerCard(),
-                        )
-                      : ListView(
-                          controller: _scrollController,
-                          children: [
-                            _buildReelSection(),
-                            if (reels.isNotEmpty)
-                              const SizedBox(height: 16),
-                            ...displayedProperties.map((property) {
-                              return _buildPropertyCard(property);
-                            }),
-                            if (isLoadingMore)
-                              const Padding(
-                                padding: EdgeInsets.symmetric(vertical: 20),
-                                child: Center(
-                                  child: ZLoadingIndicator(
-                                    size: 22,
-                                    strokeWidth: 2,
-                                    color:
-                                        Color.fromARGB(255, 169, 97, 14),
-                                  ),
-                                ),
-                              ),
-                          ],
-                        ),
                 ),
               ],
             ),
-          ),
-        ),
-      ),
+            SliverPersistentHeader(
+              pinned: true,
+              delegate: _SearchHeaderDelegate(
+                height: 106,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.08),
+                        blurRadius: 4,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  padding: const EdgeInsets.fromLTRB(12, 18, 12, 10),
+                  child: SizedBox(
+                    height: 74,
+                    child: ListView(
+                      scrollDirection: Axis.horizontal,
+                      children: [
+                        'All',
+                        'House',
+                        'Apartment',
+                        'Condominium',
+                        'Office',
+                        'Shop',
+                        'Land',
+                        'Warehouse',
+                        'Hotel'
+                      ].map((type) {
+                        final isSelected = selectedType == type;
+                        return GestureDetector(
+                          onTap: () {
+                            setState(() {
+                              selectedType = type;
+                              applyFilters();
+                            });
+                          },
+                          child: Padding(
+                            padding:
+                                const EdgeInsets.symmetric(horizontal: 6),
+                            child: Column(
+                              children: [
+                                Container(
+                                  width: 48,
+                                  height: 48,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: isSelected
+                                        ? const Color.fromARGB(
+                                            255, 169, 97, 14)
+                                        : Colors.white,
+                                    border: Border.all(
+                                      color: isSelected
+                                          ? const Color.fromARGB(
+                                              255, 169, 97, 14)
+                                          : Colors.grey.shade400,
+                                      width: 1.5,
+                                    ),
+                                  ),
+                                  child: Icon(
+                                    _categoryIcons[type] ?? Icons.home,
+                                    color: isSelected
+                                        ? Colors.white
+                                        : const Color.fromARGB(
+                                            255, 169, 97, 14),
+                                    size: 22,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  type,
+                                  style: TextStyle(
+                                    color: isSelected
+                                        ? const Color.fromARGB(
+                                            255, 169, 97, 14)
+                                        : Colors.grey.shade700,
+                                    fontWeight: isSelected
+                                        ? FontWeight.w600
+                                        : FontWeight.w400,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+              sliver: isLoading
+                  ? SliverList(
+                      delegate: SliverChildListDelegate(
+                        List.generate(3, (_) => buildShimmerCard()),
+                      ),
+                    )
+                  : SliverList(
+                      delegate: SliverChildListDelegate([
+                        _buildReelSection(),
+                        if (reels.isNotEmpty)
+                          const SizedBox(height: 24),
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text(
+                                "Nearby Properties",
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              TextButton(
+                                onPressed: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => ExplorePage(),
+                                    ),
+                                  );
+                                },
+                                child: const Text(
+                                  "View all",
+                                  style: TextStyle(fontWeight: FontWeight.w600),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        ...displayedProperties.map((property) {
+                          return _buildPropertyCard(property);
+                        }),
+                        if (isLoadingMore)
+                          const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 20),
+                            child: Center(
+                              child: ZLoadingIndicator(
+                                size: 22,
+                                strokeWidth: 2,
+                                color: Color.fromARGB(255, 169, 97, 14),
+                              ),
+                            ),
+                          ),
+                      ]),
+                    ),
+            ),
+           ],
+         ),
+       ),
+     ),
     );
-  }
+   }
+ }
+
+class _SearchHeaderDelegate extends SliverPersistentHeaderDelegate {
+  const _SearchHeaderDelegate({required this.child, required this.height});
+  final Widget child;
+  final double height;
+
+  @override
+  double get minExtent => height;
+  @override
+  double get maxExtent => height;
+
+  @override
+  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) =>
+      SizedBox(height: maxExtent, child: child);
+
+  @override
+  bool shouldRebuild(covariant _SearchHeaderDelegate old) =>
+      old.child != child || old.height != height;
 }
 
 class BottomNavBar extends StatefulWidget {
@@ -1046,64 +1208,21 @@ class BottomNavBar extends StatefulWidget {
 
 class _BottomNavBar extends State<BottomNavBar> {
   int _selectedIndex = 0;
-  int _nearbyCount = 0;
 
   final List<Widget> _pages = [
     const HomeScreen(),
     ExplorePage(),
- //   const SubscriptionPage(),
     const ProfilePage(),
   ];
 
   @override
   void initState() {
     super.initState();
-    _loadNearbyCount();
-    PropertyMonitorService.onCountUpdated = _loadNearbyCount;
   }
 
   @override
   void dispose() {
-    PropertyMonitorService.onCountUpdated = null;
     super.dispose();
-  }
-
-  Future<void> _loadNearbyCount() async {
-    final count = await PropertyMonitorService().getStoredCount();
-    if (mounted) {
-      setState(() => _nearbyCount = count);
-    }
-  }
-
-  Widget _badgeIcon(IconData icon, int count) {
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        Icon(icon),
-        if (count > 0)
-          Positioned(
-            right: -6,
-            top: -6,
-            child: Container(
-              padding: const EdgeInsets.all(2),
-              decoration: const BoxDecoration(
-                color: Colors.red,
-                shape: BoxShape.circle,
-              ),
-              constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
-              child: Text(
-                count > 99 ? '99+' : '$count',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 9,
-                  fontWeight: FontWeight.bold,
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ),
-          ),
-      ],
-    );
   }
 
   void _onTapped(int index) {
@@ -1112,38 +1231,36 @@ class _BottomNavBar extends State<BottomNavBar> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     const activeColor = Color.fromARGB(255, 169, 97, 14);
-    const inactiveColor = Colors.grey;
+    final inactiveColor = isDark ? Colors.grey.shade300 : Colors.grey.shade700;
 
     return Scaffold(
-      body: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 300),
-        child: _pages[_selectedIndex],
+      backgroundColor: isDark ? const Color(0xFF121212) : const Color(0xFFF5F5F5),
+      body: IndexedStack(
+        index: _selectedIndex,
+        children: _pages,
       ),
-      bottomNavigationBar: BottomNavigationBar(
-        type: BottomNavigationBarType.fixed,
-        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-        selectedItemColor: activeColor,
-        unselectedItemColor: inactiveColor,
-        showSelectedLabels: true,
-        showUnselectedLabels: true,
-        currentIndex: _selectedIndex,
-        onTap: _onTapped,
-        elevation: 8,
-        items: [
-          BottomNavigationBarItem(
-            icon: _badgeIcon(Icons.home, _nearbyCount),
-            label: 'Home',
-          ),
-          BottomNavigationBarItem(
-            icon: _badgeIcon(Icons.search, _nearbyCount),
-            label: 'Explore',
-          ),
-          BottomNavigationBarItem(
-            icon: _badgeIcon(Icons.person, _nearbyCount),
-            label: 'Profile',
-          ),
-        ],
+      bottomNavigationBar: MotionTabBar(
+        initialSelectedTab: 'Home',
+        labels: const ['Home', 'Explore', 'Profile'],
+        icons: const [Icons.home, Icons.search, Icons.person],
+        onTabItemSelected: _onTapped,
+        tabBarColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+        tabSelectedColor: activeColor,
+        tabIconSelectedColor: Colors.white,
+        tabIconColor: inactiveColor,
+        tabIconSize: 24,
+        tabIconSelectedSize: 32,
+        tabSize: 58,
+        tabBarHeight: 60,
+        textStyle: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: activeColor,
+        ),
+        useSafeArea: true,
+        labelAlwaysVisible: false,
       ),
     );
   }

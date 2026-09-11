@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:zcanopy/utils/colors.dart';
+import 'package:zcanopy/utils/currency.dart';
 
 class PaymentSheet {
   static Future<void> show(
@@ -20,7 +21,11 @@ class PaymentSheet {
     final price = property['price'] is num
         ? (property['price'] as num).toDouble()
         : double.tryParse(property['price'].toString()) ?? 0.0;
-    final amountText = _formatPrice(price);
+    final fee = property['bookingFee'] is num
+        ? (property['bookingFee'] as num).toDouble()
+        : price;
+    final amountText = _formatPrice(fee);
+    final showPropertyPrice = fee != price && price > 0;
     final methods = ['Mobile Money', 'Card', 'Bank Transfer'];
     String selectedMethod = methods.first;
 
@@ -84,7 +89,9 @@ class PaymentSheet {
                     ),
                     child: Column(
                       children: [
-                        _detailRow('Broker Booking Fee', amountText),
+                        _detailRow('Booking Fee', amountText),
+                        if (showPropertyPrice)
+                          _detailRow('Property Price', _formatPrice(price)),
                         _detailRow('Type',
                             property['type']?.toString() ?? '—'),
                         _detailRow('Location',
@@ -265,13 +272,5 @@ class PaymentSheet {
     );
   }
 
-  static String _formatPrice(double price) {
-    final rounded = price.round();
-    final s = rounded.toString();
-    final formatted = s.replaceAllMapped(
-      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-      (m) => '${m[1]},',
-    );
-    return 'UGX $formatted';
-  }
+  static String _formatPrice(double price) => formatUgx(price);
 }

@@ -43,6 +43,7 @@ dependencies:
   flutter_native_splash: ^2.4.7
   flutter_launcher_icons: ^0.14.4
   google_mobile_ads: ^6.0.0
+  motion_tab_bar_v2: ^3.0.0
   device_info_plus: ^12.3.0
 
 dev_dependencies:
@@ -64,7 +65,7 @@ flutter:
     - assets/zgoogle.png
     - assets/background.jpg
     - assets/video.mp4
-    - assets/taskBar.jpg
+    - assets/taskbar.jpg
     - assets/newHomes/kampala1.jpg
     - assets/newHomes/kampala2.jpg
     - assets/newHomes/kampala3.jpg

@@ -1,15 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+import 'package:video_player/video_player.dart';
 import 'package:zcanopy/pages/welcome.dart';
+import 'package:zcanopy/pages/filter_wizard.dart';
 import 'package:zcanopy/pages/loadIndicator.dart';
-import 'package:zcanopy/widgets/filter_widget.dart';
 import 'package:zcanopy/pages/itemDetails.dart';
-import 'package:zcanopy/pages/brokerCollection.dart';
 import 'package:http/http.dart' as http;
 import 'package:zcanopy/pages/network.dart';
 import 'dart:convert';
 import 'package:zcanopy/pages/session.dart';
-import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
+import 'package:zcanopy/services/api_service.dart';
+import 'package:zcanopy/pages/notifications.dart';
 import 'package:zcanopy/utils/colors.dart';
+import 'package:zcanopy/utils/currency.dart';
+import 'package:zcanopy/widgets/tiktok_video_reel.dart';
 
 class ExplorePage extends StatefulWidget {
   @override
@@ -41,7 +45,7 @@ class _ExplorePageState extends State<ExplorePage> {
     "Ranch",
     "Mobile Home",
     "Tiny House",
-    "Office Space",
+    "Office",
     "Retail Space",
     "Warehouse",
     "Industrial Property",
@@ -65,10 +69,17 @@ class _ExplorePageState extends State<ExplorePage> {
   double maxPrice = 200000;
   String searchQuery = '';
   String selectedLocation = 'All';
+  String _sortOrder = 'date';
   final TextEditingController minPriceCtrl = TextEditingController();
   final TextEditingController maxPriceCtrl = TextEditingController();
+  List<Map<String, dynamic>> _displayedItems = [];
 
-  // Example district data
+  final Map<int, VideoPlayerController> _reelControllers = {};
+  final Set<int> _initializedReels = {};
+  int _activeReelIndex = -1;
+  final ScrollController _reelScrollController = ScrollController();
+  final Set<String> _savedProperties = {};
+
   Map<String, List<Map<String, dynamic>>> regions = {
     "Kampala": [
       {
@@ -169,17 +180,14 @@ class _ExplorePageState extends State<ExplorePage> {
       },
     ],
   };
-  //Map<String, List<Map<String, dynamic>>>
   var displayedRegions = {};
 
   List<String> regionsX = ["Region A", "Region B"];
 
-  // Helper method to filter regions based on selected category
   Map<String, List<Map<String, dynamic>>> _filterRegions() {
     if (selectedCategory == "All") {
       return regions;
     }
-
     Map<String, List<Map<String, dynamic>>> filteredRegions = {};
     displayedRegions.forEach((regionName, items) {
       List<Map<String, dynamic>> filteredItems = items
@@ -189,14 +197,10 @@ class _ExplorePageState extends State<ExplorePage> {
         filteredRegions[regionName] = filteredItems;
       }
     });
-
-    print(">>>>>>>>>>>>>>${filteredRegions}");
-
     return filteredRegions;
   }
 
   Future<void> _reloadList() async {
-    //network simulation
     await Future.delayed(const Duration(seconds: 2));
     setState(() {
       regions = {
@@ -252,10 +256,9 @@ class _ExplorePageState extends State<ExplorePage> {
     });
   }
 
- Future<void> forceLogout(BuildContext context) async {
+  Future<void> forceLogout(BuildContext context) async {
+    final database = Hive.box('myStore');
     await database.clear();
-    await database.clear();
-
     Navigator.pushAndRemoveUntil(
       context,
       MaterialPageRoute(builder: (_) => const OnBoardingScreen()),
@@ -265,7 +268,6 @@ class _ExplorePageState extends State<ExplorePage> {
 
   Future<void> _fetchItems({bool refresh = false}) async {
     if (_isLoading) return;
-
     if (refresh) {
       setState(() {
         _page = 1;
@@ -273,29 +275,20 @@ class _ExplorePageState extends State<ExplorePage> {
         _hasMore = true;
       });
     }
-
     setState(() => _isLoading = true);
-
-  final isSessionValid = await SessionService.validateSession();
+    final isSessionValid = await SessionService.validateSession();
     if (!isSessionValid) {
-      if (mounted) {
-        await forceLogout(context);
-      }
+      if (mounted) await forceLogout(context);
     }
-
     try {
       final url = Uri.parse(
           "https://my-server-url/get-all-properties?region=wakiso&_limit=$_limit&_page=$_page");
-
       final response = await http.get(url);
-
       if (response.statusCode == 200) {
         final List<dynamic> data = json.decode(response.body);
-
         setState(() {
           if (data.isNotEmpty) {
             _items.addAll(data);
-            //      regions.addAll(data);
             _page++;
           } else {
             _hasMore = false;
@@ -329,8 +322,6 @@ class _ExplorePageState extends State<ExplorePage> {
     super.initState();
     _fetchItems();
     loadInitialData();
-    //   _scrollController.addListener(_onScroll);
-
     _scrollController.addListener(() {
       if (_scrollController.position.pixels >=
               _scrollController.position.maxScrollExtent - 200 &&
@@ -344,108 +335,14 @@ class _ExplorePageState extends State<ExplorePage> {
   @override
   void dispose() {
     _scrollController.dispose();
+    _reelScrollController.dispose();
+    for (final c in _reelControllers.values) c.dispose();
+    _reelControllers.clear();
     super.dispose();
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-               TextField(
-                 style: const TextStyle(color:Colors.black),
-                 onChanged: (value) {
-                   setState(() {
-                     searchQuery = value;
-                     applyFilters();
-                   });
-                   final session = SessionManager.getSessionID();
-                   if (session != null && value.isNotEmpty) {
-                     ApiService().recordSearch(
-                       sessionToken: session,
-                       query: value,
-                       resultCount: _items.length,
-                     ).catchError((e) => print('Record search failed: $e'));
-                   }
-                 },
-                 decoration: InputDecoration(
-                  hintText: "Search",
-                  
-                  prefixIcon: const Icon(Icons.search),
-                  suffixIcon: IconButton(
-                    onPressed: openFilterSheet,
-                    icon: Icon(Icons.filter_list),
-                  ),
-                  filled: true,
-                  fillColor: Colors.grey.shade100,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(15),
-                    borderSide: BorderSide.none,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              FilterWidget(
-                categories: categories,
-                onCategorySelected: (category) {
-                  setState(() {
-                    selectedCategory = category;
-                  });
-                },
-                selectedCategory: selectedCategory,
-              ),
-              const SizedBox(height: 20),
-              Expanded(
-                child: ListView.builder(
-                  itemCount: _districtGroups().length,
-                  itemBuilder: (context, index) {
-                    final entry = _districtGroups().entries.elementAt(index);
-                    final district = entry.key;
-                    final properties = entry.value;
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.only(left: 4, bottom: 8),
-                          child: Text(
-                            district,
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                              color: AppColors.brown,
-                            ),
-                          ),
-                        ),
-                        GridView.builder(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          itemCount: properties.length,
-                          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 1,
-                            mainAxisSpacing: 12,
-                            crossAxisSpacing: 0,
-                            childAspectRatio: 1.15,
-                          ),
-                          itemBuilder: (context, i) {
-                            return _buildExplorerCard(properties[i]);
-                          },
-                        ),
-                        const SizedBox(height: 16),
-                      ],
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+  Future<void> _onRefresh() async {
+    await loadInitialData();
   }
 
   Future<void> loadInitialData() async {
@@ -453,7 +350,6 @@ class _ExplorePageState extends State<ExplorePage> {
       final url = Uri.parse(
           "https://my-server-url/get-all-properties?region=wakiso&_limit=50&_page=1");
       final response = await http.get(url);
-
       if (response.statusCode == 200) {
         final List<dynamic> data = json.decode(response.body);
         if (data.isNotEmpty) {
@@ -467,7 +363,10 @@ class _ExplorePageState extends State<ExplorePage> {
             if (mounted) {
               setState(() {
                 regions = fetchedRegions;
-                displayedRegions = Map.fromEntries(regions.entries.take(itemsPerPage));
+                _displayedItems = [];
+                regions.forEach((_, items) {
+                  _displayedItems.addAll(items.map((e) => Map<String, dynamic>.from(e)));
+                });
                 isLoading = false;
               });
             }
@@ -479,10 +378,12 @@ class _ExplorePageState extends State<ExplorePage> {
     } catch (e) {
       debugPrint("Network error: $e");
     }
-
     await Future.delayed(const Duration(seconds: 2));
     setState(() {
-      displayedRegions = Map.fromEntries(regions.entries.take(itemsPerPage));
+      _displayedItems = [];
+      regions.forEach((_, items) {
+        _displayedItems.addAll(items.map((e) => Map<String, dynamic>.from(e)));
+      });
       isLoading = false;
     });
     regionsX = regions.keys.toList();
@@ -500,22 +401,13 @@ class _ExplorePageState extends State<ExplorePage> {
 
   Future<void> loadMoreData() async {
     setState(() => isLoadingMore = true);
-
-    /*  var data = await fetchData(itemsPerPage);
-    setState(() {
-      regions = data.regions;
-     isLoadingMore=data.loadingMore;
-    });*/
-
     await Future.delayed(const Duration(seconds: 2));
     setState(() {
       final start = displayedRegions.length;
       final end = (start + itemsPerPage).clamp(0, regions.length);
-
       displayedRegions.addAll(Map.fromEntries(regions.entries
           .skip(start)
-          .take(end - start))); //this is like--> regions.sublist(start, end));
-
+          .take(end - start)));
       isLoadingMore = false;
     });
   }
@@ -523,61 +415,35 @@ class _ExplorePageState extends State<ExplorePage> {
   void applyFilters() {
     double? maxPrice = double.tryParse(maxPriceCtrl.text);
     double? minPrice = double.tryParse(minPriceCtrl.text);
-    var tempX;
-
-/*
-    regions.forEach((region, valuesArray) {
-      List<Map<String, dynamic>> newList = valuesArray
-          .where((object) => object['location'] == searchQuery)
-          .toList();
-
-      if (newList.isNotEmpty) {
-        displayedRegions[region] = newList;
-      }
-    });*/
-
-    setState(() {
-      regions.forEach((region, valuesArray) {
-        List<Map<String, dynamic>> newList = valuesArray.where((object) {
-          final matchesType =
-              selectedType == 'All' || object['propertyType'] == selectedType;
-          final matchesSearch =
-              object['name'].toLowerCase().contains(searchQuery.toLowerCase());
-          final matchesPrice =
-              (minPrice == null || object['price'] >= minPrice) &&
-                  (maxPrice == null || object['price'] <= maxPrice);
-          final matchesLocation = selectedLocation == 'All' ||
-              object['location'] == selectedLocation;
-
-          return matchesType &&
-              matchesSearch &&
-              matchesPrice &&
-              matchesLocation;
-        }).toList();
-
-        //        displayedRegions = newList;
-        tempX = newList;
-      });
-
-      displayedRegions = {for (var item in tempX) item["id"]: item};
-      
+    
+    final all = <Map<String, dynamic>>[];
+    regions.forEach((_, items) {
+      all.addAll(items.map((e) => Map<String, dynamic>.from(e)));
     });
 
-/*
-    setState(() {
-      displayedRegions = regions.where((prop) {
-        final matchesType =
-            selectedType == 'All' || prop['type'] == selectedType;
-        final matchesSearch =
-            prop['name'].toLowerCase().contains(searchQuery.toLowerCase());
-        final matchesPrice = (minPrice == null || prop['price'] >= minPrice) &&
-            (maxPrice == null || prop['price'] <= maxPrice);
-        final matchesLocation =
-            selectedLocation == 'All' || prop['location'] == selectedLocation;
+    final filtered = all.where((prop) {
+      final matchesType = selectedCategory == 'All' || prop['type'] == selectedCategory;
+      final matchesSearch = (prop['name'] as String)
+          .toLowerCase()
+          .contains(searchQuery.toLowerCase());
+      final matchesLocation = selectedLocation == 'All' ||
+          prop['location'] == selectedLocation;
+      final matchesPrice = (minPrice == null || prop['price'] >= minPrice) &&
+          (maxPrice == null || prop['price'] <= maxPrice);
+      return matchesType && matchesSearch && matchesLocation && matchesPrice;
+    }).toList();
 
-        return matchesType && matchesSearch && matchesPrice && matchesLocation;
-      }).toList();
-    });*/
+    // Apply sorting
+    if (_sortOrder == 'price_asc') {
+      filtered.sort((a, b) => (a['price'] as num).compareTo(b['price'] as num));
+    } else if (_sortOrder == 'price_desc') {
+      filtered.sort((a, b) => (b['price'] as num).compareTo(a['price'] as num));
+    }
+    // 'date' is default, keeping original order
+
+    setState(() {
+      _displayedItems = filtered;
+    });
   }
 
   void openFilterSheet() {
@@ -586,33 +452,42 @@ class _ExplorePageState extends State<ExplorePage> {
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(5)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
       ),
       builder: (_) {
         return StatefulBuilder(builder: (context, setModalState) {
           return Padding(
               padding: EdgeInsets.only(
-                  bottom: MediaQuery.of(context)
-                      .viewInsets
-                      .bottom), //const EdgeInsets.all(16),
+                  bottom: MediaQuery.of(context).viewInsets.bottom),
               child: Container(
-                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Text("Filter Properties",
+                    const Text("Sort & Filter",
                         style: TextStyle(
                             fontSize: 18, fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 16),
+                    DropdownButtonFormField<String>(
+                      value: _sortOrder,
+                      items: const [
+                        DropdownMenuItem(value: 'date', child: Text('Date Added')),
+                        DropdownMenuItem(value: 'price_asc', child: Text('Price: Low to High')),
+                        DropdownMenuItem(value: 'price_desc', child: Text('Price: High to Low')),
+                      ],
+                      onChanged: (val) {
+                        setModalState(() => _sortOrder = val!);
+                      },
+                      decoration: const InputDecoration(
+                          labelText: "Sort By",
+                          border: OutlineInputBorder(),
+                          labelStyle: TextStyle(color: Colors.grey),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
                     DropdownButtonFormField<String>(
                       value: selectedLocation,
-                      items: [
-                        'All',
-                        'Ntinda',
-                        'Kisaasi',
-                        'Naalya',
-                        'Bweyogerere'
-                      ]
+                      items: ['All', 'Ntinda', 'Kisaasi', 'Naalya', 'Bweyogerere']
                           .map((e) => DropdownMenuItem(
                               value: e, child: Text(e.toString())))
                           .toList(),
@@ -620,92 +495,54 @@ class _ExplorePageState extends State<ExplorePage> {
                         setModalState(() => selectedLocation = val!);
                       },
                       decoration: const InputDecoration(
-                          fillColor: Color.fromARGB(255, 169, 97, 14),
-                          labelText: "Location",
-                          border: OutlineInputBorder(
-                            borderSide: BorderSide(
-                                color: Color.fromARGB(255, 169, 97, 14)),
-                            borderRadius: BorderRadius.all(Radius.circular(10)),
-                          ),
-                          labelStyle: TextStyle(color: Colors.grey),
-                          floatingLabelStyle: TextStyle(
-                              color: Color.fromARGB(255, 169, 97, 14)),
-                          focusedBorder: OutlineInputBorder(
-                              borderRadius:
-                                  BorderRadius.all(Radius.circular(10)),
-                              borderSide: BorderSide(
-                                  color: Color.fromARGB(255, 169, 97, 14),
-                                  width: 1.5))),
+                          labelText: "Location / District",
+                          border: OutlineInputBorder(),
+                      ),
                     ),
-                    const SizedBox(height: 20),
-                    Text("Max Price: ${maxPrice.toInt()} UGX"),
-                    /*   Slider(
-                  activeColor: Color.fromARGB(255, 169, 97, 14),
-                  value: maxPrice,
-                  min: 100000,
-                  max: 3000000,
-                  divisions: 13,
-                  label: maxPrice.toStringAsFixed(0),
-                  onChanged: (val) {
-                    setModalState(() => maxPrice = val);
-                  },
-                ),*/
-
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 16),
                     Row(
                       children: [
                         Expanded(
                             child: TextFormField(
                           controller: minPriceCtrl,
                           keyboardType: TextInputType.number,
-                          decoration: InputDecoration(
-                            contentPadding:
-                                EdgeInsets.symmetric(horizontal: 20),
+                          decoration: const InputDecoration(
+                            contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                             labelText: 'Min Price',
-                            border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(30)),
-                            focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(30),
-                                borderSide: BorderSide(color: Colors.brown)),
-                            floatingLabelStyle: TextStyle(
-                                color: Color.fromARGB(255, 169, 97, 14)),
+                            border: OutlineInputBorder(),
                           ),
                           onChanged: (_) => applyFilters(),
                         )),
-                        SizedBox(
-                          width: 12,
-                        ),
+                        const SizedBox(width: 12),
                         Expanded(
                             child: TextFormField(
                           controller: maxPriceCtrl,
                           keyboardType: TextInputType.number,
-                          decoration: InputDecoration(
-                            contentPadding:
-                                EdgeInsets.symmetric(horizontal: 20),
+                          decoration: const InputDecoration(
+                            contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                             labelText: 'Max Price',
-                            border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(30)),
-                            focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(30),
-                                borderSide: BorderSide(color: Colors.brown)),
-                            floatingLabelStyle: TextStyle(
-                                color: Color.fromARGB(255, 169, 97, 14)),
+                            border: OutlineInputBorder(),
                           ),
                           onChanged: (_) => applyFilters(),
                         ))
                       ],
                     ),
-                    const SizedBox(height: 10),
-                    ElevatedButton(
-                      onPressed: () {
-                        Navigator.pop(context);
-                        applyFilters();
-                      },
-                      style: ElevatedButton.styleFrom(
-                          backgroundColor: Color.fromARGB(255, 169, 97, 14)),
-                      child: const Text("Apply Filters",
-                          style: TextStyle(color: Colors.white)),
+                    const SizedBox(height: 20),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: () {
+                          Navigator.pop(context);
+                          applyFilters();
+                        },
+                        style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color.fromARGB(255, 169, 97, 14),
+                            padding: const EdgeInsets.symmetric(vertical: 14)),
+                        child: const Text("Apply",
+                            style: TextStyle(color: Colors.white, fontSize: 16)),
+                      ),
                     ),
+                    const SizedBox(height: 12),
                   ],
                 ),
               ));
@@ -719,10 +556,8 @@ class _ExplorePageState extends State<ExplorePage> {
     regions.forEach((_, items) {
       all.addAll(items.map((e) => Map<String, dynamic>.from(e)));
     });
-
     final minPrice = double.tryParse(maxPriceCtrl.text);
     final maxPrice = double.tryParse(maxPriceCtrl.text);
-
     return all.where((prop) {
       final matchesType = selectedType == 'All' || prop['type'] == selectedType;
       final matchesSearch = (prop['name'] as String)
@@ -736,14 +571,11 @@ class _ExplorePageState extends State<ExplorePage> {
     }).toList();
   }
 
-  void _navigateToBrokerCollection(Map<String, dynamic> property) {
+  void _openDetails(Map<String, dynamic> property) {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => BrokerCollectionPage(
-          brokerCode: property['brokerCode'] ?? '',
-          brokerName: property['brokerName'] ?? 'Broker',
-        ),
+        builder: (_) => PropertyDetailsPage(property: property),
       ),
     );
   }
@@ -758,244 +590,42 @@ class _ExplorePageState extends State<ExplorePage> {
     return grouped;
   }
 
-  Widget _buildExplorerCard(Map<String, dynamic> property) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final cardColor = isDark
-        ? const Color(0xFF2A2A2A)
-        : const Color.fromARGB(160, 254, 251, 248);
-    final status = property['status']?.toString() ?? 'Available';
-    final available = status.toLowerCase() == 'available';
-    final price = property['price'] is num
-        ? (property['price'] as num).toDouble()
-        : 0.0;
-    final imgList = property['images'] as List?;
-    final imageCount = imgList != null && imgList.isNotEmpty ? imgList.length : 1;
-    final hasVideo = property['video'] != null &&
-        property['video'].toString().isNotEmpty;
+  List<Map<String, dynamic>> get _videoTours => _displayedItems
+      .where((p) => p['video'] != null && p['video'].toString().isNotEmpty)
+      .map((p) => {
+            'videoUrl': p['video'],
+            'title': p['name']?.toString() ?? 'Property tour',
+            'location': p['location']?.toString() ?? '',
+            'subCounty': p['subCounty']?.toString() ?? '',
+            'district': p['district']?.toString() ?? '',
+            'brokerCode': p['brokerCode']?.toString() ?? '',
+            'brokerName': p['brokerName']?.toString() ?? 'Broker',
+            'brokerPhone': p['brokerPhone']?.toString() ?? '',
+          })
+      .toList();
 
-    return _ExplorerCardStateful(
-      property: property,
-      isDark: isDark,
-      cardColor: cardColor,
-      status: status,
-      available: available,
-      price: price,
-      imgList: imgList,
-      imageCount: imageCount,
-      hasVideo: hasVideo,
-     );
-   }
-}
-
-String _formatPrice(double price) {
-  final s = price.round().toString();
-  return s.replaceAllMapped(
-    RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-    (m) => '${m[1]},',
-  );
-}
-
-class _ExplorerCardStateful extends StatefulWidget {
-  final Map<String, dynamic> property;
-  final bool isDark;
-  final Color cardColor;
-  final String status;
-  final bool available;
-  final double price;
-  final List? imgList;
-  final int imageCount;
-  final bool hasVideo;
-
-  const _ExplorerCardStateful({
-    required this.property,
-    required this.isDark,
-    required this.cardColor,
-    required this.status,
-    required this.available,
-    required this.price,
-    required this.imgList,
-    required this.imageCount,
-    required this.hasVideo,
-  });
-
-  @override
-  State<_ExplorerCardStateful> createState() => _ExplorerCardStatefulState();
-}
-
-class _ExplorerCardStatefulState extends State<_ExplorerCardStateful> {
-  int _currentImageIndex = 0;
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      color: widget.cardColor,
-      margin: const EdgeInsets.only(bottom: 12),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => BrokerCollectionPage(
-                brokerCode: widget.property['brokerCode'] ?? '',
-                brokerName: widget.property['brokerName'] ?? 'Broker',
-              ),
-            ),
-          );
-        },
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+  void _openVideoTours() {
+    final videos = _videoTours;
+    if (videos.isEmpty) return;
+    showDialog(
+      context: context,
+      barrierColor: Colors.black,
+      builder: (_) => Dialog(
+        backgroundColor: Colors.black,
+        insetPadding: EdgeInsets.zero,
+        child: Stack(
           children: [
             SizedBox(
-              height: 160,
-              child: Stack(
-                children: [
-                  PageView.builder(
-                    itemCount: widget.imageCount,
-                    onPageChanged: (index) {
-                      setState(() => _currentImageIndex = index);
-                    },
-                    itemBuilder: (context, index) {
-                      final imgUrl = (widget.imgList != null && widget.imgList!.isNotEmpty)
-                          ? widget.imgList![index % widget.imgList!.length].toString()
-                          : widget.property['image']?.toString() ?? '';
-                      return Image.network(
-                        imgUrl,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => Container(
-                          color: Colors.grey.shade300,
-                          child: const Icon(Icons.home, size: 40, color: Colors.grey),
-                        ),
-                      );
-                    },
-                  ),
-                  Positioned(
-                    top: 8,
-                    right: 8,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: widget.available ? Colors.green : Colors.red,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Text(
-                        widget.status,
-                        style: const TextStyle(color: Colors.white, fontSize: 11),
-                      ),
-                    ),
-                  ),
-                  if (widget.imageCount > 1)
-                    Positioned(
-                      bottom: 8,
-                      left: 0,
-                      right: 0,
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: List.generate(
-                          widget.imageCount,
-                          (i) => AnimatedContainer(
-                            duration: const Duration(milliseconds: 200),
-                            margin: const EdgeInsets.symmetric(horizontal: 3),
-                            width: _currentImageIndex == i ? 8 : 6,
-                            height: _currentImageIndex == i ? 8 : 6,
-                            decoration: BoxDecoration(
-                              color: _currentImageIndex == i
-                                  ? Colors.white
-                                  : Colors.white.withOpacity(0.5),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
+              height: MediaQuery.of(context).size.height,
+              width: MediaQuery.of(context).size.width,
+              child: TikTokVideoReel(videos: videos),
             ),
-            Expanded(
-              flex: 1,
-              child: Padding(
-                padding: const EdgeInsets.all(8),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                     Text(
-                       widget.property['name'] ?? '',
-                       maxLines: 2,
-                       overflow: TextOverflow.ellipsis,
-                       style: const TextStyle(
-                         fontWeight: FontWeight.w600,
-                         fontSize: 13,
-                       ),
-                     ),
-                     const SizedBox(height: 3),
-                     Align(
-                       alignment: Alignment.centerRight,
-                       child: Container(
-                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                         decoration: BoxDecoration(
-                           color: AppColors.brown,
-                           borderRadius: BorderRadius.circular(6),
-                         ),
-                         child: Text(
-                           widget.property['brokerName']?.toString() ?? 'Broker',
-                           style: const TextStyle(
-                             color: Colors.white,
-                             fontSize: 10,
-                             fontWeight: FontWeight.w600,
-                           ),
-                         ),
-                       ),
-                     ),
-                     const SizedBox(height: 2),
-                     Text(
-                       widget.property['location'] ?? '',
-                       maxLines: 1,
-                       overflow: TextOverflow.ellipsis,
-                       style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
-                     ),
-                     const SizedBox(height: 4),
-                     Text(
-                       'UGX ${_formatPrice(widget.price)}',
-                       style: TextStyle(
-                         color: AppColors.brown,
-                         fontWeight: FontWeight.bold,
-                         fontSize: 12,
-                       ),
-                     ),
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton.icon(
-                        onPressed: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => BrokerCollectionPage(
-                                brokerCode: widget.property['brokerCode'] ?? '',
-                                brokerName: widget.property['brokerName'] ?? 'Broker',
-                              ),
-                            ),
-                          );
-                        },
-                        icon: const Icon(Icons.visibility_outlined, size: 14),
-                        label: const Text(
-                          "View",
-                          style: TextStyle(fontSize: 11),
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: AppColors.brown,
-                          side: const BorderSide(color: AppColors.brown),
-                          padding: const EdgeInsets.symmetric(vertical: 6),
-                          visualDensity: VisualDensity.compact,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+            Positioned(
+              top: 40,
+              left: 16,
+              child: IconButton(
+                icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+                onPressed: () => Navigator.pop(context),
               ),
             ),
           ],
@@ -1003,4 +633,530 @@ class _ExplorerCardStatefulState extends State<_ExplorerCardStateful> {
       ),
     );
   }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final headerBg = isDark ? const Color(0xFF1E1E1E) : Colors.white;
+    final iconColor = isDark ? Colors.white : Colors.black87;
+
+    return Scaffold(
+      backgroundColor: isDark
+          ? Theme.of(context).scaffoldBackgroundColor
+          : Colors.grey.shade100,
+      floatingActionButton: _videoTours.isNotEmpty
+          ? FloatingActionButton.extended(
+              onPressed: _openVideoTours,
+              heroTag: 'explore_video_tours',
+              backgroundColor: const Color.fromARGB(255, 169, 97, 14),
+              foregroundColor: Colors.white,
+              elevation: 6,
+              icon: const Icon(Icons.play_circle_fill, size: 22),
+              label: const Text(
+                'Video Tours',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(28),
+              ),
+            )
+          : null,
+      body: Container(
+        decoration: isDark
+            ? BoxDecoration(color: Theme.of(context).scaffoldBackgroundColor)
+            : const BoxDecoration(
+                image: DecorationImage(
+                  image: AssetImage('assets/background.jpg'),
+                  fit: BoxFit.cover,
+                ),
+              ),
+        child: RefreshIndicator(
+          onRefresh: _onRefresh,
+          color: const Color.fromARGB(255, 169, 97, 14),
+          child: CustomScrollView(
+            slivers: [
+            SliverAppBar(
+              pinned: true,
+              centerTitle: false,
+              automaticallyImplyLeading: false,
+              backgroundColor: headerBg,
+              surfaceTintColor: Colors.transparent,
+              elevation: 0,
+              toolbarHeight: 56,
+              titleSpacing: 0,
+              title: Padding(
+                padding: const EdgeInsets.only(left: 12, right: 8),
+                child: Text(
+                  "Explore",
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w600,
+                    color: iconColor,
+                  ),
+                ),
+              ),
+              actions: [
+                _buildCircleAction(
+                  icon: Icons.search,
+                  onPressed: () => showDialog(
+                    context: context,
+                    builder: (ctx) => FilterWizard(
+                      onComplete: (filters) {
+                        setState(() {
+                          selectedCategory = filters['type'] ?? 'All';
+                          selectedLocation = filters['location'] ?? 'All';
+                          minPriceCtrl.text = filters['minPrice'] ?? '';
+                          maxPriceCtrl.text = filters['maxPrice'] ?? '';
+                        });
+                        applyFilters();
+                      },
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                _buildCircleAction(
+                  icon: Icons.filter_list,
+                  onPressed: openFilterSheet,
+                ),
+                const SizedBox(width: 6),
+                _buildCircleAction(
+                  icon: Icons.notifications_outlined,
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (context) => NotificationsPage()),
+                  ),
+                ),
+              ],
+            ),
+            SliverPersistentHeader(
+              pinned: true,
+              delegate: _SearchHeaderDelegate(
+                height: 106,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: headerBg,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.08),
+                        blurRadius: 4,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                  child: SizedBox(
+                    height: 88,
+                    child: ListView(
+                      scrollDirection: Axis.horizontal,
+                      children: categories.take(9).map((type) {
+                        final isSelected = selectedCategory == type;
+                        return GestureDetector(
+                          onTap: () =>
+                              setState(() => selectedCategory = type),
+                          child: Padding(
+                            padding:
+                                const EdgeInsets.symmetric(horizontal: 6),
+                            child: Column(
+                              children: [
+                                Container(
+                                  width: 48,
+                                  height: 48,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: isSelected
+                                        ? const Color.fromARGB(255, 169, 97, 14)
+                                        : Colors.white,
+                                    border: Border.all(
+                                      color: isSelected
+                                          ? const Color.fromARGB(
+                                              255, 169, 97, 14)
+                                          : Colors.grey.shade400,
+                                      width: 1.5,
+                                    ),
+                                  ),
+                                  child: Icon(
+                                    _categoryIcon(type),
+                                    color: isSelected
+                                        ? Colors.white
+                                        : const Color.fromARGB(255, 169, 97, 14),
+                                    size: 22,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  type,
+                                  style: TextStyle(
+                                    color: isSelected
+                                        ? const Color.fromARGB(255, 169, 97, 14)
+                                        : Colors.grey.shade700,
+                                    fontWeight: isSelected
+                                        ? FontWeight.w600
+                                        : FontWeight.w400,
+                                    fontSize: 11,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+              sliver: SliverList(
+                delegate: SliverChildBuilderDelegate(
+                  (context, index) {
+                    if (index >= _displayedItems.length) return null;
+                    final property = _displayedItems[index];
+                    final isSaved = _savedProperties.contains(property['id']);
+                    final status = property['status']?.toString() ?? 'Available';
+                    final available = status.toLowerCase() == 'available';
+                    return GestureDetector(
+                      onTap: () => _openDetails(property),
+                      child: Card(
+                        color: isDark ? const Color(0xFF2A2A2A) : Colors.white,
+                        margin: const EdgeInsets.only(bottom: 16),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16)),
+                        clipBehavior: Clip.antiAlias,
+                        elevation: isDark ? 0 : 2,
+                        shadowColor: Colors.black.withValues(alpha: 0.08),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Stack(
+                              children: [
+                                Image.network(
+                                  property['image'],
+                                  height: 200,
+                                  width: double.infinity,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, __, ___) => Container(
+                                    height: 200,
+                                    color: Colors.grey.shade200,
+                                    child: const Center(
+                                      child: Icon(Icons.home_outlined,
+                                          size: 40, color: Colors.grey),
+                                    ),
+                                  ),
+                                ),
+                                Container(
+                                  height: 200,
+                                  decoration: const BoxDecoration(
+                                    gradient: LinearGradient(
+                                      begin: Alignment.topCenter,
+                                      end: Alignment.bottomCenter,
+                                      colors: [
+                                        Colors.transparent,
+                                        Colors.black26
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                                Positioned(
+                                  top: 10,
+                                  right: 10,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 10, vertical: 5),
+                                    decoration: BoxDecoration(
+                                      color: available
+                                          ? Colors.green
+                                          : Colors.red,
+                                      borderRadius:
+                                          BorderRadius.circular(12),
+                                    ),
+                                    child: Text(
+                                      status,
+                                      style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w600),
+                                    ),
+                                  ),
+                                ),
+                                Positioned(
+                                  top: 10,
+                                  left: 10,
+                                  child: GestureDetector(
+                                    onTap: () => setState(() {
+                                      if (isSaved) {
+                                        _savedProperties
+                                            .remove(property['id']);
+                                      } else {
+                                        _savedProperties
+                                            .add(property['id']);
+                                      }
+                                    }),
+                                    child: Container(
+                                      width: 36,
+                                      height: 36,
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        color: Colors.white
+                                            .withValues(alpha: 0.9),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: Colors.black
+                                                .withValues(alpha: 0.15),
+                                            blurRadius: 6,
+                                            offset: const Offset(0, 2),
+                                          ),
+                                        ],
+                                      ),
+                                      child: Icon(
+                                        isSaved
+                                            ? Icons.bookmark
+                                            : Icons.bookmark_border,
+                                        color: isSaved
+                                            ? const Color.fromARGB(
+                                                255, 169, 97, 14)
+                                            : Colors.grey.shade600,
+                                        size: 20,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                if ((property['video'] != null &&
+                                        property['video']
+                                            .toString()
+                                            .isNotEmpty))
+                                  Positioned(
+                                    bottom: 10,
+                                    right: 10,
+                                    child: Container(
+                                      padding: const EdgeInsets.all(6),
+                                      decoration: BoxDecoration(
+                                        color: Colors.black
+                                            .withValues(alpha: 0.6),
+                                        borderRadius:
+                                            BorderRadius.circular(20),
+                                      ),
+                                      child: const Icon(
+                                          Icons.play_circle_fill,
+                                          color: Colors.white,
+                                          size: 24),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                            Padding(
+                              padding: const EdgeInsets.all(14),
+                              child: Column(
+                                crossAxisAlignment:
+                                    CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    property['name'],
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 15,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  const SizedBox(height: 6),
+Text(
+                                  formatUgx(property['price']),
+                                  style: const TextStyle(
+                                    color: Color.fromARGB(
+                                        255, 169, 97, 14),
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16,
+                                  ),
+                                ),
+                                  const SizedBox(height: 6),
+                                  Row(
+                                    children: [
+                                      const Icon(
+                                          Icons.location_on_outlined,
+                                          size: 14,
+                                          color: Colors.grey),
+                                      const SizedBox(width: 4),
+                                      Expanded(
+                                        child: Text(
+                                          "${property['subCounty']}, ${property['district']}",
+                                          style: TextStyle(
+                                              color:
+                                                  Colors.grey.shade600,
+                                              fontSize: 12),
+                                          maxLines: 1,
+                                          overflow:
+                                              TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 10),
+                                  Row(
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets
+                                            .symmetric(
+                                            horizontal: 8, vertical: 3),
+                                        decoration: BoxDecoration(
+                                          color: const Color.fromARGB(
+                                                  255, 169, 97, 14)
+                                              .withValues(alpha: 0.1),
+                                          borderRadius:
+                                              BorderRadius.circular(8),
+                                        ),
+                                        child: Text(
+                                          property['brokerName']
+                                                  ?.toString() ??
+                                              'Broker',
+                                          style: const TextStyle(
+                                            color: Color.fromARGB(
+                                                255, 169, 97, 14),
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ),
+                                      const Spacer(),
+                                      OutlinedButton.icon(
+                                        onPressed: () =>
+                                            _openDetails(property),
+                                        icon: const Icon(
+                                            Icons.visibility_outlined,
+                                            size: 16),
+                                        label: const Text("View",
+                                            style:
+                                                TextStyle(fontSize: 12)),
+                                        style: OutlinedButton.styleFrom(
+                                          foregroundColor:
+                                              const Color.fromARGB(
+                                                  255, 169, 97, 14),
+                                          side: const BorderSide(
+                                              color: Color.fromARGB(
+                                                  255, 169, 97, 14)),
+                                          padding:
+                                              const EdgeInsets.symmetric(
+                                                  horizontal: 14,
+                                                  vertical: 6),
+                                          visualDensity:
+                                              VisualDensity.compact,
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius:
+                                                BorderRadius.circular(
+                                                    20),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                  childCount: _displayedItems.length,
+                ),
+              ),
+            ),
+           ],
+         ),
+       ),
+     ),
+    );
+  }
+
+  Widget _buildCircleAction({required IconData icon, required VoidCallback onPressed}) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      width: 42,
+      height: 42,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: isDark ? const Color(0xFF2A2A2A) : Colors.grey.shade100,
+        border: Border.all(color: Colors.grey.shade300, width: 1),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.1),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: IconButton(
+        icon: Icon(icon),
+        onPressed: onPressed,
+      ),
+    );
+  }
+
+  IconData _categoryIcon(String type) {
+    switch (type) {
+      case 'All':
+        return Icons.grid_view;
+      case 'House':
+      case 'Bungalow':
+      case 'Townhouse':
+      case 'Villa':
+      case 'Duplex':
+      case 'Triplex':
+      case 'Farmhouse':
+      case 'Ranch':
+      case 'Mobile Home':
+      case 'Tiny House':
+      case 'Cottage':
+      case 'Cabin':
+      case 'Mansion':
+        return Icons.home;
+      case 'Apartment':
+      case 'Studio':
+      case 'Loft':
+      case 'Penthouse':
+      case 'Flat':
+      case 'Single Room':
+      case 'Double Room':
+        return Icons.apartment;
+      case 'Condominium':
+        return Icons.villa;
+      case 'Office':
+      case 'Office Space':
+      case 'Industrial Property':
+        return Icons.work;
+      case 'Retail Space':
+      case 'Storage Unit':
+        return Icons.store;
+      case 'Land':
+      case 'Parking Space':
+        return Icons.terrain;
+      case 'Warehouse':
+        return Icons.warehouse;
+      case 'Hotel':
+        return Icons.hotel;
+      default:
+        return Icons.home;
+    }
+  }
+}
+
+class _SearchHeaderDelegate extends SliverPersistentHeaderDelegate {
+  const _SearchHeaderDelegate(
+      {required this.child, required this.height});
+  final Widget child;
+  final double height;
+
+  @override
+  double get minExtent => height;
+  @override
+  double get maxExtent => height;
+
+  @override
+  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) =>
+      SizedBox(height: maxExtent, child: child);
+
+  @override
+  bool shouldRebuild(covariant _SearchHeaderDelegate old) =>
+      old.child != child || old.height != height;
 }

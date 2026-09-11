@@ -14,11 +14,13 @@ import 'package:zcanopy/utils/theme_extensions.dart';
 class PhoneOtpScreen extends StatefulWidget {
   final String phoneNumber;
   final String verificationId;
+  final VoidCallback? onVerified;
 
   const PhoneOtpScreen({
     super.key,
     required this.phoneNumber,
     required this.verificationId,
+    this.onVerified,
   });
 
   @override
@@ -49,6 +51,9 @@ class _PhoneOtpScreenState extends State<PhoneOtpScreen> {
           content: Text("one time otp sent!"),
           backgroundColor: Color.fromARGB(255, 169, 97, 14)),
     );
+
+    // DEV: no real OTP backend for the delinked login flow.
+    if (_verificationId == 'dev-verification-id') return;
 
     try {
       final response = await _apiService.requestPhoneOTP(
@@ -85,6 +90,22 @@ class _PhoneOtpScreenState extends State<PhoneOtpScreen> {
   void _verifyCode() async {
     String smsCode = otpController.text;
 
+    // DEV: bypass backend when no real verification id is available.
+    if (_verificationId == 'dev-verification-id') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Phone verification successful!")),
+      );
+      database.put('phoneNumber', widget.phoneNumber);
+      if (widget.onVerified != null) {
+        widget.onVerified!();
+        Navigator.pop(context);
+      } else {
+        Navigator.pushReplacement(
+            context, MaterialPageRoute(builder: (_) => BottomNavBar()));
+      }
+      return;
+    }
+
     try {
       final result = await _apiService.verifyPhoneOTP(
         verificationID: _verificationId,
@@ -97,8 +118,13 @@ class _PhoneOtpScreenState extends State<PhoneOtpScreen> {
           const SnackBar(content: Text("Phone verification successful!")),
         );
 
-        Navigator.pushReplacement(
-            context, MaterialPageRoute(builder: (_) => BottomNavBar()));
+        if (widget.onVerified != null) {
+          widget.onVerified!();
+          Navigator.pop(context);
+        } else {
+          Navigator.pushReplacement(
+              context, MaterialPageRoute(builder: (_) => BottomNavBar()));
+        }
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(result['message'] ?? "Verification failed")),
@@ -118,6 +144,15 @@ class _PhoneOtpScreenState extends State<PhoneOtpScreen> {
   }
 
   void _resendCode() async {
+    // DEV: no real OTP backend for the delinked login flow.
+    if (_verificationId == 'dev-verification-id') {
+      setState(() {
+        secondsRemaining = 60;
+        enableResend = false;
+      });
+      startTimer();
+      return;
+    }
     try {
       final result = await _apiService.resendPhoneOTP(
         verificationID: _verificationId,

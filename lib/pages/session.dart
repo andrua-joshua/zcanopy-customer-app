@@ -5,6 +5,11 @@ import 'package:zcanopy/pages/network.dart';
 class SessionService {
   static const bool _devMockSession = true;
 
+  static String? getSessionID() {
+    final box = Hive.box('myStore');
+    return box.get('sessionID')?.toString();
+  }
+
   static Future<bool> validateSession() async {
     if (_devMockSession) return true;
 
