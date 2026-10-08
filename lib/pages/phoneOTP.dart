@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'package:zcanopy/pages/network.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -7,7 +6,7 @@ import 'package:zcanopy/pages/profile.dart';
 import 'package:pinput/pinput.dart';
 import 'package:zcanopy/pages/homeScreen.dart';
 import 'package:hive_flutter/hive_flutter.dart';
-import 'package:zcanopy/services/api_service.dart';
+import 'package:zcanopy/services/gateway_api.dart';
 import 'package:zcanopy/widgets/themed_page_background.dart';
 import 'package:zcanopy/utils/theme_extensions.dart';
 
@@ -33,7 +32,7 @@ class _PhoneOtpScreenState extends State<PhoneOtpScreen> {
   bool enableResend = false;
   late String _verificationId;
   final TextEditingController otpController = TextEditingController();
-  final _apiService = ApiService();
+  final _api = GatewayApi();
 
   final database = Hive.box('myStore');
 
@@ -56,7 +55,7 @@ class _PhoneOtpScreenState extends State<PhoneOtpScreen> {
     if (_verificationId == 'dev-verification-id') return;
 
     try {
-      final response = await _apiService.requestPhoneOTP(
+      final response = await _api.requestPhoneOTP(
         userId: database.get('userID'),
       );
       if (response['success'] == true) {
@@ -107,8 +106,8 @@ class _PhoneOtpScreenState extends State<PhoneOtpScreen> {
     }
 
     try {
-      final result = await _apiService.verifyPhoneOTP(
-        verificationID: _verificationId,
+      final result = await _api.verifyPhoneOTP(
+        verificationId: _verificationId,
         userId: database.get('userID'),
         code: smsCode,
       );
@@ -154,8 +153,8 @@ class _PhoneOtpScreenState extends State<PhoneOtpScreen> {
       return;
     }
     try {
-      final result = await _apiService.resendPhoneOTP(
-        verificationID: _verificationId,
+      final result = await _api.resendPhoneOTP(
+        verificationId: _verificationId,
         userId: database.get('userID'),
       );
       if (result['success'] == true) {

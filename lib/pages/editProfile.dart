@@ -1,11 +1,8 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:zcanopy/pages/welcome.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'dart:convert';
-import 'package:http/http.dart' as http;
 import 'package:hive_flutter/hive_flutter.dart';
-import 'package:zcanopy/pages/network.dart';
-import 'package:zcanopy/pages/session.dart';
+import 'package:zcanopy/services/gateway_api.dart';
 import 'package:zcanopy/widgets/themed_page_background.dart';
 import 'package:zcanopy/utils/theme_extensions.dart';
 
@@ -31,42 +28,10 @@ class _ProfilePageState extends State<ProfilePageEdit> {
   String country = "Uganda";
 
   bool isDeleting = false;
-  bool _isLoading = false;
   bool isUserInDB = false;
 
   // Controller for phone number editing
   late TextEditingController _phoneController;
-
-  Future<void> _fetchUserBio() async {
-    if (_isLoading) return;
-    setState(() => _isLoading = true);
-
-    try {
-      final url =
-          Uri.parse("https://my-server-url/get-user-bio-data?userID=1234");
-
-      final response = await http.get(url);
-
-      if (response.statusCode == 200) {
-        var data = json.decode(response.body);
-
-        setState(() {
-          if (data.isNotEmpty) {
-            fullName = data['fullName'];
-            userName = data['username'];
-            accountType = data['accountType'];
-            email = data['email'];
-            phone = data['phone'];
-            country = data['country'];
-          }
-        });
-      } else {
-        debugPrint("Error: ${response.statusCode}");
-      }
-    } catch (e) {
-      debugPrint("Network error: $e");
-    } finally {}
-  }
 
   @override
   void initState() {
@@ -95,23 +60,6 @@ class _ProfilePageState extends State<ProfilePageEdit> {
       MaterialPageRoute(builder: (_) => const OnBoardingScreen()),
       (_) => false,
     );
-  }
-
-  postData(payload) async {
-  final isSessionValid = await SessionService.validateSession();
-    if (!isSessionValid) {
-      if (mounted) {
-        await forceLogout(context);
-      }
-    }
-
-    try {
-      final data = await NetworkService.post(
-          'http://127.0.0.1:4000/gate-way/delete-user-account', payload);
-      return data;
-    } catch (e) {
-      print(e);
-    }
   }
 
   @override
@@ -277,7 +225,6 @@ class _ProfilePageState extends State<ProfilePageEdit> {
   }
 
   void _confirmDeleteAccount() {
-    final clientEmail = database.get('email');
 
     showDialog(
       context: context,
@@ -301,10 +248,12 @@ class _ProfilePageState extends State<ProfilePageEdit> {
                   const Text("Cancel", style: TextStyle(color: Colors.white)),
             ),
             TextButton(
-              onPressed: () {
+              onPressed: () async {
                 Navigator.of(context).pop(); // Close dialog
-                database.clear();
-                _deleteAccount();
+                final deleted = await _deleteAccount();
+                if (!deleted) return;
+                await database.clear();
+                if (!mounted) return;
                 Navigator.pushAndRemoveUntil(
                   context,
                   MaterialPageRoute(
@@ -320,21 +269,53 @@ class _ProfilePageState extends State<ProfilePageEdit> {
     );
   }
 
-  void _deleteAccount() {
-    // In a real app, you would call your API to delete the account
-    // and then navigate to the login screen or similar
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text("Account deleted successfully"),
-        backgroundColor: Colors.red,
-      ),
-    );
+  /// Requests a one-time deletion code and then deletes the account on the
+  /// gateway. Returns true when the account was deleted.
+  Future<bool> _deleteAccount() async {
+    final userId = database.get('userID')?.toString() ?? '';
+    if (userId.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("No account to delete on this device")),
+        );
+      }
+      return false;
+    }
 
-    // Navigate to login screen or home screen
-    // Navigator.pushAndRemoveUntil(
-    //   context,
-    //   MaterialPageRoute(builder: (context) => LoginScreen()),
-    //   (route) => false,
-    // );
+    if (mounted) setState(() => isDeleting = true);
+    try {
+      await GatewayApi().requestAccountDeletionOtp(userId: userId);
+      final response = await GatewayApi().deleteUserAccount(userId: userId);
+      final ok = response['success'] == true || response['error'] == null;
+      if (mounted) {
+        setState(() => isDeleting = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(ok
+                ? "Account deleted successfully"
+                : (response['message']?.toString() ?? "Account deletion failed")),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return ok;
+    } on ApiException catch (e) {
+      if (mounted) {
+        setState(() => isDeleting = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.message)),
+        );
+      }
+      return false;
+    } catch (e) {
+      print('Delete account error: $e');
+      if (mounted) {
+        setState(() => isDeleting = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Could not delete account")),
+        );
+      }
+      return false;
+    }
   }
 }

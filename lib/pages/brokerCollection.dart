@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:zcanopy/data/sample_catalog.dart';
-import 'package:zcanopy/services/api_service.dart';
+import 'package:zcanopy/services/gateway_api.dart';
 import 'package:zcanopy/pages/itemDetails.dart';
 import 'package:zcanopy/utils/theme_extensions.dart';
 import 'package:zcanopy/widgets/property_listing_card.dart';
@@ -30,9 +29,10 @@ class BrokerCollectionPage extends StatefulWidget {
 }
 
 class _BrokerCollectionPageState extends State<BrokerCollectionPage> {
-  final _api = ApiService();
+  final _api = GatewayApi();
   List<Map<String, dynamic>> _properties = [];
   bool _loading = true;
+  bool _failed = false;
   final Set<String> _savedProperties = {};
 
   @override
@@ -45,37 +45,33 @@ class _BrokerCollectionPageState extends State<BrokerCollectionPage> {
   }
 
   Future<void> _load() async {
+    setState(() => _failed = false);
     try {
       final res = await _api.getBrokerPropertiesForCustomer(
-        sessionToken: _api.currentSessionId ?? '',
         brokerCode: widget.brokerCode,
+        page: 1,
+        limit: 50,
       );
-      if (res['success'] == true && res['properties'] is List) {
-        final list = (res['properties'] as List)
-            .map((e) => Map<String, dynamic>.from(e))
-            .toList();
-        _applyBrokerMeta(list);
-        if (mounted) {
-          setState(() {
-            _properties = list;
-            _loading = false;
-          });
-        }
-        return;
+      final raw = res['properties'];
+      final list = raw is List
+          ? raw.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList()
+          : <Map<String, dynamic>>[];
+      _applyBrokerMeta(list);
+      if (mounted) {
+        setState(() {
+          _properties = list;
+          _loading = false;
+        });
       }
     } catch (e) {
-      debugPrint('Broker properties fetch failed, using local: $e');
-    }
-    final local = kSampleProperties
-        .where((p) => p['brokerCode']?.toString() == widget.brokerCode)
-        .map((e) => Map<String, dynamic>.from(e))
-        .toList();
-    _applyBrokerMeta(local);
-    if (mounted) {
-      setState(() {
-        _properties = local;
-        _loading = false;
-      });
+      debugPrint('Broker properties fetch failed: $e');
+      if (mounted) {
+        setState(() {
+          _properties = [];
+          _loading = false;
+          _failed = true;
+        });
+      }
     }
   }
 
@@ -252,10 +248,37 @@ class _BrokerCollectionPageState extends State<BrokerCollectionPage> {
               SliverFillRemaining(
                 hasScrollBody: false,
                 child: Center(
-                  child: Text(
-                    'No properties from this broker yet.',
-                    style: TextStyle(color: context.appMutedTextColor),
-                  ),
+                  child: _failed
+                      ? Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.cloud_off,
+                                size: 40, color: Colors.grey),
+                            const SizedBox(height: 8),
+                            Text(
+                              "Couldn't load properties. Check your connection.",
+                              textAlign: TextAlign.center,
+                              style:
+                                  TextStyle(color: context.appMutedTextColor),
+                            ),
+                            const SizedBox(height: 12),
+                            ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: _primary,
+                                foregroundColor: Colors.white,
+                              ),
+                              onPressed: () {
+                                setState(() => _loading = true);
+                                _load();
+                              },
+                              child: const Text('Retry'),
+                            ),
+                          ],
+                        )
+                      : Text(
+                          'No properties from this broker yet.',
+                          style: TextStyle(color: context.appMutedTextColor),
+                        ),
                 ),
               )
             else

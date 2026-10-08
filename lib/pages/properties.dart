@@ -4,12 +4,10 @@ import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'package:zcanopy/pages/network.dart';
 import 'package:hive_flutter/hive_flutter.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:location/location.dart';
 import 'package:zcanopy/pages/session.dart';
-import 'package:zcanopy/services/api_service.dart';
+import 'package:zcanopy/services/gateway_api.dart';
 
 const String visionApiKey = 'AIzaSyDFMghpugRAmcZakMSB0J04vZjSO3quAz8';
 
@@ -221,32 +219,20 @@ class PropertiesPage extends StatefulWidget {
 class _PropertiesPageState extends State<PropertiesPage> {
   final ScrollController _scrollController = ScrollController();
   final ImagePicker picker = ImagePicker();
-  final _apiService = ApiService();
+  final _api = GatewayApi();
   bool isLoading = true;
-  bool startFetch = false;
   bool showNextButton = true;
   final database = Hive.box('myStore');
   var userID;
 
-  bool _isLoading = false;
+  bool _uploadedSuccessfully = false;
   bool isUploading = false;
   bool isLoadingMore = false;
   final int itemsPerPage = 2;
   List<Map<String, dynamic>> displayedProps = [];
 
-  Set<Marker> _markers = {};
-
   Location _location = Location();
-  LatLng? _currentLocation;
   var globalCoords;
-  final LatLng _destination = LatLng(40.7128, -74.0060); // NYC
-
-  Map<String, dynamic> _graphData = {
-    "total": 12,
-    "approved": 6,
-    "rejected": 4,
-    "pending": 2,
-  };
 
   // Active subscription tier + its enforced limits, shown on the upload page
   // and used to validate every property the broker drops in.
@@ -258,241 +244,7 @@ class _PropertiesPageState extends State<PropertiesPage> {
     'maxVideoSizeMB': 500,
   };
 
-  List<Map<String, dynamic>> properties = [
-    {
-      "id": "P1001",
-      "status": "Pending",
-      "name": "Modern Apartment",
-      "location": "Kampala",
-      "dateUploaded": "2025-08-20",
-      "daysRemaining": 25,
-      "visible": true,
-      "bookings": 3,
-      "bookingsInQueue": 2,
-      "images": [
-        "https://picsum.photos/200/120?random=1",
-        "https://picsum.photos/200/120?random=2",
-        "https://picsum.photos/200/120?random=3",
-      ],
-      "mainImage": "https://picsum.photos/200/120?random=1",
-      "video":
-          "https://flutter.github.io/assets-for-api-docs/assets/videos/bee.mp4",
-      "bedrooms": 3,
-      "bathrooms": 2,
-      "kitchen": true,
-      "livingRoom": true,
-      "size": "1200 sqft",
-      "latitude": 0.3476,
-      "longitude": 32.5825,
-      "clients": [
-        {
-          "propertyID": "P1001",
-          "expiry": 40,
-          "names": "delos kevin",
-          "phoneNumber": "+256741882818",
-        },
-        {
-          "propertyID": "P1001",
-          "expiry": 60,
-          "names": "delos kevin",
-          "phoneNumber": "+256741882818",
-        },
-        {
-          "propertyID": "P1001",
-          "expiry": 160,
-          "names": "delos kevin",
-          "phoneNumber": "+256741882818",
-        },
-        {
-          "propertyID": "P1001",
-          "expiry": 120,
-          "names": "delos kevin",
-          "phoneNumber": "+256741882818",
-        },
-        {
-          "propertyID": "P1001",
-          "expiry": 25,
-          "names": "delos kevin",
-          "phoneNumber": "+256741882818",
-        },
-      ],
-    },
-    {
-      "id": "P1002",
-      "status": "Approved",
-      "name": "Luxury Villa",
-      "location": "Entebbe",
-      "dateUploaded": "2025-08-18",
-      "daysRemaining": 20,
-      "visible": true,
-      "bookings": 5,
-      "bookingsInQueue": 0,
-      "images": [
-        "https://picsum.photos/200/120?random=1",
-        "https://picsum.photos/200/120?random=2",
-        "https://picsum.photos/200/120?random=3",
-      ],
-      "mainImage": "https://picsum.photos/200/120?random=3",
-      "video":
-          "https://flutter.github.io/assets-for-api-docs/assets/videos/bee.mp4",
-      "bedrooms": 5,
-      "bathrooms": 4,
-      "kitchen": true,
-      "livingRoom": true,
-      "size": "2500 sqft",
-      "latitude": 0.0645,
-      "longitude": 32.4592,
-      "clients": [
-        {
-          "propertyID": "P1002",
-          "expiry": 60,
-          "names": "delos kevin",
-          "phoneNumber": "+256741882818",
-        },
-        {
-          "propertyID": "P1002",
-          "expiry": 60,
-          "names": "delos kevin",
-          "phoneNumber": "+256741882818",
-        },
-        {
-          "propertyID": "P1002",
-          "expiry": 60,
-          "names": "delos kevin",
-          "phoneNumber": "+256741882818",
-        },
-        {
-          "propertyID": "P1002",
-          "expiry": 60,
-          "names": "delos kevin",
-          "phoneNumber": "+256741882818",
-        },
-        {
-          "propertyID": "P1002",
-          "expiry": 60,
-          "names": "delos kevin",
-          "phoneNumber": "+256741882818",
-        },
-      ],
-    },
-    {
-      "id": "P1P1002",
-      "status": "Pending",
-      "name": "Studio Apartment",
-      "location": "Jinja",
-      "dateUploaded": "2025-08-21",
-      "daysRemaining": 28,
-      "visible": true,
-      "bookings": 1,
-      "bookingsInQueue": 1,
-      "images": [
-        "https://picsum.photos/200/120?random=1",
-        "https://picsum.photos/200/120?random=2",
-        "https://picsum.photos/200/120?random=3",
-      ],
-      "mainImage": "https://picsum.photos/200/120?random=3",
-      "video":
-          "https://flutter.github.io/assets-for-api-docs/assets/videos/bee.mp4",
-      "bedrooms": 1,
-      "bathrooms": 1,
-      "kitchen": true,
-      "livingRoom": false,
-      "size": "500 sqft",
-      "latitude": 0.4306,
-      "longitude": 33.2006,
-      "clients": [
-        {
-          "propertyID": "P1P1002",
-          "expiry": 60,
-          "names": "delos kevin",
-          "phoneNumber": "+256741882818",
-        },
-        {
-          "propertyID": "P1P1002",
-          "expiry": 60,
-          "names": "delos kevin",
-          "phoneNumber": "+256741882818",
-        },
-        {
-          "propertyID": "P1P1002",
-          "expiry": 60,
-          "names": "delos kevin",
-          "phoneNumber": "+256741882818",
-        },
-        {
-          "propertyID": "P1P1002",
-          "expiry": 60,
-          "names": "delos kevin",
-          "phoneNumber": "+256741882818",
-        },
-        {
-          "propertyID": "P1P1002",
-          "expiry": 60,
-          "names": "delos kevin",
-          "phoneNumber": "+256741882818",
-        },
-      ],
-    },
-    {
-      "id": "P1004",
-      "status": "Approved",
-      "name": "Family Home",
-      "location": "Mbarara",
-      "dateUploaded": "2025-08-22",
-      "daysRemaining": 30,
-      "visible": true,
-      "bookings": 0,
-      "bookingsInQueue": 0,
-      "images": [
-        "https://picsum.photos/200/120?random=1",
-        "https://picsum.photos/200/120?random=2",
-        "https://picsum.photos/200/120?random=3",
-      ],
-      "mainImage": "https://picsum.photos/200/120?random=3",
-      "video":
-          "https://flutter.github.io/assets-for-api-docs/assets/videos/bee.mp4",
-      "bedrooms": 4,
-      "bathrooms": 3,
-      "kitchen": true,
-      "livingRoom": true,
-      "size": "2000 sqft",
-      "latitude": -0.6057,
-      "longitude": 30.6773,
-      "clients": [
-        {
-          "propertyID": "P1004",
-          "expiry": 60,
-          "names": "delos kevin",
-          "phoneNumber": "+256741882818",
-        },
-        {
-          "propertyID": "P1004",
-          "expiry": 60,
-          "names": "delos kevin",
-          "phoneNumber": "+256741882818",
-        },
-        {
-          "propertyID": "P1004",
-          "expiry": 60,
-          "names": "delos kevin",
-          "phoneNumber": "+256741882818",
-        },
-        {
-          "propertyID": "P1004",
-          "expiry": 60,
-          "names": "delos kevin",
-          "phoneNumber": "+256741882818",
-        },
-        {
-          "propertyID": "P1004",
-          "expiry": 60,
-          "names": "delos kevin",
-          "phoneNumber": "+256741882818",
-        },
-      ],
-    },
-  ];
-
+  List<Map<String, dynamic>> properties = [];
   Future<void> _getProperties() async {
     final isSessionValid = await SessionService.validateSession();
     if (!isSessionValid) {
@@ -502,18 +254,23 @@ class _PropertiesPageState extends State<PropertiesPage> {
     setState(() => isLoading = true);
 
     try {
-      final response = await _apiService.getProperties(
-        userId: userID,
+      final response = await _api.getOwnerProperties(
+        brokerCode:
+            database.get('brokerCode')?.toString() ?? userID?.toString() ?? '',
+        page: 1,
+        limit: 50,
       );
-
-      if (response['success'] == true) {
-        setState(() {
-          properties = List<Map<String, dynamic>>.from(response['data'] ?? []);
-          displayedProps = properties.take(itemsPerPage).toList();
-        });
-      } else {
-        debugPrint("Error: ${response['message']}");
-      }
+      final raw = response['properties'] ?? response['data'];
+      final list = raw is List
+          ? raw
+              .whereType<Map>()
+              .map((e) => Map<String, dynamic>.from(e))
+              .toList()
+          : <Map<String, dynamic>>[];
+      setState(() {
+        properties = list;
+        displayedProps = properties.take(itemsPerPage).toList();
+      });
     } catch (e) {
       debugPrint("Network error: $e");
     } finally {
@@ -524,8 +281,8 @@ class _PropertiesPageState extends State<PropertiesPage> {
   // Dialog for adding new property
   void _showAddPropertyDialog() {
     final TextEditingController nameCtrl = TextEditingController();
-    final TextEditingController locationCtrl = TextEditingController();
     final TextEditingController descriptionCtrl = TextEditingController();
+    final TextEditingController priceCtrl = TextEditingController();
     List<String> selectedImages = [];
     String? selectedVideo;
     int selectedVideoSizeMB = 0;
@@ -534,6 +291,7 @@ class _PropertiesPageState extends State<PropertiesPage> {
     // Validation state: each rule is checked live as the broker drops items.
     bool _nameValid = false;
     bool _descValid = false;
+    bool _priceValid = false;
     bool _photosValid = false;
     bool _videosValid = false;
     bool _videoSizeValid = true;
@@ -548,6 +306,8 @@ class _PropertiesPageState extends State<PropertiesPage> {
 
       _nameValid = nameCtrl.text.trim().isNotEmpty;
       _descValid = descriptionCtrl.text.trim().isNotEmpty;
+      _priceValid = num.tryParse(priceCtrl.text.trim()) != null &&
+          num.parse(priceCtrl.text.trim()) > 0;
       _photosValid = selectedImages.length > 0 &&
           selectedImages.length <= maxPhotos;
       _videosValid = selectedVideo == null ||
@@ -558,6 +318,7 @@ class _PropertiesPageState extends State<PropertiesPage> {
       final errors = <String>[];
       if (!_nameValid) errors.add('Add a property name');
       if (!_descValid) errors.add('Add a description');
+      if (!_priceValid) errors.add('Add a price');
       if (selectedImages.isEmpty) {
         errors.add('Add at least one photo');
       } else if (selectedImages.length > maxPhotos) {
@@ -769,6 +530,44 @@ class _PropertiesPageState extends State<PropertiesPage> {
                               ),
                               validator: (val) =>
                                   val != null ? null : 'Enter a property Name',
+                            ),
+
+                            const SizedBox(height: 20),
+                            TextFormField(
+                              style: TextStyle(color: Colors.white),
+                              cursorColor: Color.fromARGB(255, 169, 97, 14),
+                              controller: priceCtrl,
+                              keyboardType: TextInputType.number,
+                              onChanged: (_) {
+                                _runValidation();
+                                setDialogState(() {});
+                              },
+                              decoration: const InputDecoration(
+                                contentPadding: EdgeInsets.all(10),
+                                labelText: "Price (UGX)",
+                                labelStyle: TextStyle(color: Colors.white),
+                                focusedBorder: OutlineInputBorder(
+                                  borderSide: BorderSide(
+                                    color: Color.fromARGB(255, 169, 97, 14),
+                                  ),
+                                ),
+                                border: OutlineInputBorder(
+                                  borderSide: BorderSide(
+                                    color: Color.fromARGB(255, 169, 97, 14),
+                                  ),
+                                  borderRadius: BorderRadius.all(
+                                    Radius.circular(12),
+                                  ),
+                                ),
+                                prefixIcon: Icon(
+                                  Icons.attach_money,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              validator: (val) =>
+                                  val != null && val.trim().isNotEmpty
+                                      ? null
+                                      : 'Enter a price',
                             ),
 
                             /* const SizedBox(height: 20),
@@ -1047,6 +846,7 @@ class _PropertiesPageState extends State<PropertiesPage> {
                         onPressed: _validationMessage == 'All checks passed'
                             ? () async {
                           final userID = database.get('userID');
+                          await _captureCoords();
                           final lat = globalCoords?.latitude ?? 0.0;
                           final lng = globalCoords?.longitude ?? 0.0;
 
@@ -1055,20 +855,28 @@ class _PropertiesPageState extends State<PropertiesPage> {
                           String subCounty = '';
                           String district = '';
                           try {
-                            final resolved = await NetworkService.get(
-                              'http://127.0.0.1:4000/properties/resolve-location-name?lat=$lat&long=$lng',
+                            final resolved = await _api.resolveLocationName(
+                              lat: lat,
+                              long: lng,
                             );
-                            subCounty = resolved['subCounty'] ?? '';
-                            district = resolved['district'] ?? '';
+                            subCounty = resolved['subCounty']?.toString() ?? '';
+                            district = resolved['district']?.toString() ?? '';
+                            // Gateway currently returns only `locationName`.
+                            if (subCounty.isEmpty && district.isEmpty) {
+                              district =
+                                  resolved['locationName']?.toString() ?? '';
+                            }
                           } catch (e) {
                             debugPrint('Resolve location failed: $e');
                           }
 
                           final String locationName = subCounty.isNotEmpty
                               ? subCounty
-                              : (_currentLocation != null
-                                  ? _currentLocation.toString()
-                                  : 'Unknown');
+                              : district.isNotEmpty
+                                  ? district
+                                  : (lat != 0.0 || lng != 0.0)
+                                      ? '$lat, $lng'
+                                      : 'Unknown';
 
                           // Build a payload that matches the backend
                           // CreateProperty requirements, including subCounty/
@@ -1079,6 +887,7 @@ class _PropertiesPageState extends State<PropertiesPage> {
                             "description": descriptionCtrl.text,
                             "propertyType": "House",
                             "location": locationName,
+                            "price": num.tryParse(priceCtrl.text.trim()) ?? 0,
                             "lat": lat,
                             "lng": lng,
                             "imageUrl": selectedImages,
@@ -1161,77 +970,12 @@ class _PropertiesPageState extends State<PropertiesPage> {
     );
   }
 
-  Future<void> _getLocationUpdates() async {
-    try {
-      bool _serviceEnabled;
-      PermissionStatus _permissionGranted;
-
-      _serviceEnabled = await _location.serviceEnabled();
-      if (!_serviceEnabled) {
-        _serviceEnabled = await _location.requestService();
-        if (!_serviceEnabled) return;
-      }
-
-      _permissionGranted = await _location.hasPermission();
-      if (_permissionGranted == PermissionStatus.denied) {
-        _permissionGranted = await _location.requestPermission();
-        if (_permissionGranted != PermissionStatus.granted) return;
-      }
-
-      final locData = await _location.getLocation();
-      globalCoords = locData;
-
-      if (locData.latitude != null && locData.longitude != null) {
-        _currentLocation = LatLng(locData.latitude!, locData.longitude!);
-      }
-
-      _location.onLocationChanged.listen((newLoc) {
-        if (newLoc.latitude != null && newLoc.longitude != null) {
-          setState(() {
-            _currentLocation = LatLng(newLoc.latitude!, newLoc.longitude!);
-            _markers = {
-              Marker(
-                markerId: MarkerId("currentLocation"),
-                position: _currentLocation!,
-                infoWindow: InfoWindow(title: "You are here"),
-              ),
-              Marker(
-                markerId: MarkerId("destination"),
-                position: _destination,
-                infoWindow: InfoWindow(title: "Destination"),
-                icon: BitmapDescriptor.defaultMarkerWithHue(
-                  BitmapDescriptor.hueBlue,
-                ),
-              ),
-            };
-          });
-
-          database.put('location', _currentLocation);
-          //    _getDirections();
-        }
-      });
-    } catch (e) {
-      print("Error getting location updates: $e");
-    }
-  }
-
   @override
   void initState() {
     super.initState();
-    startFetch ? _getProperties() : '';
-    loadInitialData();
     userID = database.get('userID');
-    getGraphData();
+    _getProperties();
     _loadTierLimits();
-
-    _scrollController.addListener(() {
-      if (_scrollController.position.pixels >=
-              _scrollController.position.maxScrollExtent - 200 &&
-          !isLoadingMore &&
-          displayedProps.length < properties.length) {
-        loadMoreData();
-      }
-    });
   }
 
   /// Loads the broker's active subscription tier and its limits so the
@@ -1242,18 +986,32 @@ class _PropertiesPageState extends State<PropertiesPage> {
 
     String? tierKey = database.get('subscriptionTier')?.toString();
 
+    Map<String, dynamic>? liveLimits;
     try {
-      final dashboard = await _apiService.getBrokerDashboard(brokerId: brokerCode);
-      final broker = dashboard['broker'] ?? dashboard;
-      tierKey ??= broker['subscriptionTier']?.toString() ??
-          broker['subscription_tier']?.toString();
-      if (tierKey != null) database.put('subscriptionTier', tierKey);
+      // Works for customer sessions too (unlike /brokers/dashboard/me).
+      final details = await _api.getSubscriptionDetails(brokerCode: brokerCode);
+      tierKey ??= (details['subscriptionTier'] ?? details['tier'])?.toString();
+      if (tierKey != null && tierKey.isNotEmpty) {
+        database.put('subscriptionTier', tierKey);
+      }
+      if (details['limits'] is Map) {
+        liveLimits = Map<String, dynamic>.from(details['limits'] as Map);
+      }
     } catch (e) {
-      debugPrint('Load tier from dashboard failed: $e');
+      debugPrint('Load tier from subscription details failed: $e');
+      try {
+        final dashboard = await _api.getBrokerDashboard();
+        final broker = dashboard['broker'] ?? dashboard;
+        tierKey ??= broker['subscriptionTier']?.toString() ??
+            broker['subscription_tier']?.toString();
+        if (tierKey != null) database.put('subscriptionTier', tierKey);
+      } catch (e2) {
+        debugPrint('Load tier from dashboard failed: $e2');
+      }
     }
 
     try {
-      final packages = await _apiService.getSubscriptionPackages();
+      final packages = await _api.getSubscriptionPackages();
       final tiers = (packages['tiers'] as List?) ?? [];
       if (tiers.isNotEmpty) {
         final match = tiers.firstWhere(
@@ -1263,12 +1021,49 @@ class _PropertiesPageState extends State<PropertiesPage> {
         if (mounted) {
           setState(() {
             _tierName = match['name']?.toString() ?? 'Prop';
-            _tierLimits = Map<String, dynamic>.from(match['limits'] ?? _tierLimits);
+            _tierLimits = liveLimits ??
+                Map<String, dynamic>.from(match['limits'] ?? _tierLimits);
           });
         }
       }
     } catch (e) {
       debugPrint('Load subscription packages failed: $e');
+      if (liveLimits != null && mounted) {
+        setState(() => _tierLimits = liveLimits!);
+      }
+    }
+  }
+
+  /// One-shot device location capture used when a broker uploads a property.
+  /// Stores plain lat/lng in Hive so PropertyMonitorService can reuse it.
+  Future<void> _captureCoords() async {
+    if (globalCoords != null) return;
+    try {
+      bool serviceEnabled = await _location.serviceEnabled();
+      if (!serviceEnabled) serviceEnabled = await _location.requestService();
+      if (!serviceEnabled) return;
+
+      PermissionStatus permission = await _location.hasPermission();
+      if (permission == PermissionStatus.denied) {
+        permission = await _location.requestPermission();
+      }
+      if (permission == PermissionStatus.denied ||
+          permission == PermissionStatus.deniedForever) {
+        return;
+      }
+
+      final loc = await _location
+          .getLocation()
+          .timeout(const Duration(seconds: 15));
+      if (loc.latitude != null && loc.longitude != null) {
+        globalCoords = loc;
+        database.put('location', {
+          'latitude': loc.latitude,
+          'longitude': loc.longitude,
+        });
+      }
+    } catch (e) {
+      debugPrint('Device location capture failed: $e');
     }
   }
 
@@ -1285,21 +1080,30 @@ class _PropertiesPageState extends State<PropertiesPage> {
     });
 
     try {
-      await _apiService.createProperty(
-        userId: payload['brokersUniqueCode'],
-        title: payload['title'],
-        description: payload['description'],
-        propertyType: payload['propertyType'],
-        location: payload['location'],
+      final videoRaw = payload['videoUrl'];
+      final videos = videoRaw == null
+          ? <String>[]
+          : videoRaw is List
+              ? List<String>.from(videoRaw)
+              : [videoRaw.toString()];
+      await _api.createProperty(
+        brokerCode: payload['brokersUniqueCode']?.toString() ?? '',
+        title: payload['title']?.toString() ?? '',
+        description: payload['description']?.toString() ?? '',
+        propertyType: payload['propertyType']?.toString() ?? 'House',
+        location: payload['location']?.toString() ?? '',
+        price: num.tryParse(payload['price']?.toString() ?? '') ?? 0,
+        imageUrl: List<String>.from(payload['imageUrl'] ?? []),
+        videoUrl: videos,
         lat: (payload['lat'] ?? 0.0).toDouble(),
         lng: (payload['lng'] ?? 0.0).toDouble(),
-        imageUrl: List<String>.from(payload['imageUrl'] ?? []),
-        videoUrl: payload['videoUrl'],
-        subCounty: payload['subCounty'],
-        district: payload['district'],
+        subCounty: payload['subCounty']?.toString(),
+        district: payload['district']?.toString(),
       );
+      _uploadedSuccessfully = true;
     } catch (e) {
       debugPrint('Create property request failed: $e');
+      _uploadedSuccessfully = false;
     } finally {
       if (mounted) {
         setState(() => isUploading = false);
@@ -1308,126 +1112,16 @@ class _PropertiesPageState extends State<PropertiesPage> {
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Property successfully uploaded!"),
-          backgroundColor: Color.fromARGB(255, 169, 97, 14),
+        SnackBar(
+          content: Text(_uploadedSuccessfully
+              ? "Property successfully uploaded!"
+              : "Upload failed. Please try again."),
+          backgroundColor: _uploadedSuccessfully
+              ? Color.fromARGB(255, 169, 97, 14)
+              : Colors.red,
         ),
       );
-      Navigator.pop(context); // Close add property dialog
-    }
-  }
-
-  Future<void> getGraphData() async {
-    final isSessionValid = await SessionService.validateSession();
-    if (!isSessionValid) {
-      if (mounted) {
-        await forceLogout(context);
-      }
-    }
-
-    final payload = {"userID": database.get('userID')};
-
-    final response = await fetchData2(userID);
-    if (response.success) {
-      setState(() {
-        _graphData = response.graphData;
-      });
-    }
-  }
-
-  postData(path, payload) async {
-    try {
-      final data = await NetworkService.post(
-        'http://127.0.0.1:4000/listings${path}',
-        payload,
-      );
-      return data;
-    } catch (e) {
-      print(e);
-    }
-  }
-
-  deleteProperty(payload, index) async {
-    final isSessionValid = await SessionService.validateSession();
-    if (!isSessionValid) {
-      if (mounted) {
-        await forceLogout(context);
-      }
-    }
-
-    setState(() {
-      properties.remove(displayedProps[index]);
-    });
-
-    Navigator.pop(context);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text("Property deletion successfull"),
-        backgroundColor: Colors.red,
-      ),
-    );
-
-    //-------------stopping here at the moment----------------
-
-    final response = await postData('/delete-property', payload);
-    if (response.success) {
-      setState(() {
-        properties.remove(displayedProps[index]);
-      });
-
-      Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Property deletion successfull"),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
-  }
-
-  Future<void> approveProperty(context, index, payload) async {
-    final isSessionValid = await SessionService.validateSession();
-    if (!isSessionValid) {
-      if (mounted) {
-        await forceLogout(context);
-      }
-    }
-
-    final response = await postData('/approve-property', payload);
-
-    if (response.success) {
-      displayedProps[index]['status'] = 'approved';
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Property successfully approved!"),
-          backgroundColor: Color.fromARGB(255, 169, 97, 14),
-        ),
-      );
-
-      Navigator.pop(context); // Close add property dialog
-    }
-  }
-
-  fetchData(userID, itemsPerPage) async {
-    try {
-      final data = await NetworkService.get(
-        'http://127.0.0.1:4000/gate-way/get-user-properties?userID=${userID}&itemsPerPage=${itemsPerPage}',
-      );
-      return data;
-    } catch (e) {
-      print(e);
-    }
-  }
-
-  fetchData2(userID) async {
-    try {
-      final data = await NetworkService.get(
-        'http://127.0.0.1:4000/gate-way/get-graph-data?userID=${userID}',
-      );
-      return data;
-    } catch (e) {
-      print(e);
+      if (_uploadedSuccessfully) Navigator.pop(context);
     }
   }
 
@@ -1440,53 +1134,6 @@ class _PropertiesPageState extends State<PropertiesPage> {
       MaterialPageRoute(builder: (_) => const OnBoardingScreen()),
       (_) => false,
     );
-  }
-
-  Future<void> loadInitialData() async {
-    final isSessionValid = await SessionService.validateSession();
-    if (!isSessionValid) {
-      if (mounted) {
-        await forceLogout(context);
-      }
-    }
-
-    /* final data = await fetchData(userID, itemsPerPage);
-
-    if (data.success) {
-      setState(() {
-        properties = data.properties;
-        _isLoading = false;
-        isLoadingMore = data.isLoadingMore;
-      });
-    }*/
-
-    await Future.delayed(const Duration(seconds: 2));
-    setState(() {
-      displayedProps = properties.take(itemsPerPage).toList();
-      isLoading = false;
-    });
-  }
-
-  Future<void> loadMoreData() async {
-    setState(() => isLoadingMore = true);
-
-    /*final data = await fetchData(userID, itemsPerPage);
-
-    if (data.success) {
-      setState(() {
-        properties = data.bookings;
-        _isLoading = false;
-        isLoadingMore = data.isLoadingMore;
-      });
-    }*/
-
-    await Future.delayed(const Duration(seconds: 2));
-    setState(() {
-      final start = displayedProps.length;
-      final end = (start + itemsPerPage).clamp(0, properties.length);
-      displayedProps.addAll(properties.sublist(start, end));
-      isLoadingMore = false;
-    });
   }
 
   Widget _limitChip(IconData icon, String label, String value) {

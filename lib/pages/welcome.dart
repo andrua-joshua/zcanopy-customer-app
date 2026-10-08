@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:smooth_page_indicator/smooth_page_indicator.dart';
 import 'package:zcanopy/pages/homeScreen.dart';
-import 'package:zcanopy/services/api_service.dart';
+import 'package:zcanopy/services/gateway_api.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:zcanopy/utils/theme_extensions.dart';
 import 'package:zcanopy/widgets/themed_page_background.dart';
@@ -59,8 +59,18 @@ class _OnBoardingScreenState extends State<OnBoardingScreen> {
     if (_starting) return;
     setState(() => _starting = true);
 
-    // Customers are anonymous: ensure a tracking session exists, then go home.
-    await ApiService().ensureCustomerSession();
+    try {
+      await GatewayApi().ensureCustomerSession();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('Could not reach the server. Try again.')),
+        );
+        setState(() => _starting = false);
+      }
+      return;
+    }
 
     if (!mounted) return;
     Navigator.pushReplacement(

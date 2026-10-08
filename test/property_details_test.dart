@@ -70,8 +70,9 @@ void main() {
     expect(find.text('Book tour', skipOffstage: false), findsOneWidget);
     expect(find.text('Booking fee', skipOffstage: false), findsOneWidget);
     expect(find.text('UGX 20,000', skipOffstage: false), findsOneWidget);
-    expect(find.text('Similar Properties', skipOffstage: false),
-        findsOneWidget);
+    // Similar properties come from the live gateway; tests have no network,
+    // so the section stays hidden instead of falling back to sample data.
+    expect(find.text('Similar Properties', skipOffstage: false), findsNothing);
     expect(find.text('Submit review', skipOffstage: false), findsNothing);
 
     await tester.dragFrom(const Offset(400, 500), const Offset(0, -700));

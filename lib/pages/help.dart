@@ -1,7 +1,8 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:zcanopy/pages/welcome.dart';
-import 'package:zcanopy/pages/network.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'package:zcanopy/pages/session.dart';
+import 'package:zcanopy/services/gateway_api.dart';
 import 'package:zcanopy/widgets/themed_page_background.dart';
 import 'package:zcanopy/utils/theme_extensions.dart';
 
@@ -22,6 +23,7 @@ class _HelpCenterPageState extends State<HelpCenterPage>
   final TextEditingController messageController = TextEditingController();
 
   final List<String> categories = ["General", "Account", "Service", "Payment"];
+  final database = Hive.box('myStore');
 
   final List<Map<String, String>> faqs = [
     {
@@ -65,48 +67,53 @@ class _HelpCenterPageState extends State<HelpCenterPage>
   }
 
   Future<void> sendUserData() async {
-  final isSessionValid = await SessionService.validateSession();
+    if (!(_formKey.currentState?.validate() ?? false)) return;
+    final isSessionValid = await SessionService.validateSession();
     if (!isSessionValid) {
-      await forceLogout(context);
+      if (mounted) await forceLogout(context);
+      return;
     }
 
-    setState(() {
-      isSending = true;
-    });
+    setState(() => isSending = true);
 
-    final usernames = nameController.text;
-    final email = emailController.text;
-    final message = messageController.text;
-    final subject = subjectController.text;
+    final database = Hive.box('myStore');
+    final subject = subjectController.text.trim();
+    final message = messageController.text.trim();
+    final content = subject.isEmpty
+        ? message
+        : '$subject\n$message';
 
-    final payload = {
-      "username": usernames,
-      "email": email,
-      "message": message,
-      "subject": subject
-    };
-
-    final response = await postData(payload);
-
-    if (response.success) {
+    try {
+      await GatewayApi().submitFeedback(
+        email: emailController.text.trim(),
+        phone: database.get('phoneNumber')?.toString() ?? '',
+        content: content,
+      );
+      if (!mounted) return;
       setState(() {
         isSending = false;
+        nameController.clear();
+        emailController.clear();
+        subjectController.clear();
+        messageController.clear();
       });
-
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text("Password reset successfully!"),
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text("Message sent. We'll get back to you shortly."),
         backgroundColor: Color.fromARGB(255, 169, 97, 14),
       ));
-    }
-  }
-
-  postData(payload) async {
-    try {
-      final data = await NetworkService.post(
-          'http://127.0.0.1:4000/users/save-user-info', payload);
-      return data;
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() => isSending = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message)),
+      );
     } catch (e) {
-      print(e);
+      print('Feedback error: $e');
+      if (!mounted) return;
+      setState(() => isSending = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Could not send. Please try again.")),
+      );
     }
   }
 

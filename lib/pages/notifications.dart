@@ -1,8 +1,6 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:zcanopy/pages/welcome.dart';
-import 'package:http/http.dart' as http;
 import 'package:zcanopy/pages/loadIndicator.dart';
-import 'dart:convert';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:zcanopy/pages/session.dart';
 import 'package:zcanopy/utils/colors.dart';
@@ -10,6 +8,8 @@ import 'package:zcanopy/pages/bookings.dart';
 import 'package:zcanopy/pages/payments.dart';
 import 'package:zcanopy/pages/properties.dart';
 import 'package:zcanopy/utils/theme_extensions.dart';
+import 'package:zcanopy/services/gateway_api.dart';
+import 'package:zcanopy/utils/property_normalizer.dart';
 
 /// Notification categories the page is able to receive and render.
 enum NotificationCategory {
@@ -41,6 +41,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
   List<Map<String, dynamic>> displayedNotifs = [];
   final database = Hive.box('myStore');
   final box = Hive.box('notifications');
+  final _api = GatewayApi();
   var userID;
 
   // Filter chips shown at the top of the page
@@ -136,105 +137,41 @@ class _NotificationsPageState extends State<NotificationsPage> {
     setState(() => isGettingNotifs = true);
 
     try {
-      final url = Uri.parse(
-          "http://127.0.0.1:4000/gate-way/get-notifications?id=$userID&notesPerPage=50");
-      final response = await http.get(url);
+      final response = await _api.getNotifications(page: 1, limit: 50);
+      var fetched = normalizeNotifications(response['notifications']);
 
-      if (response.statusCode == 200) {
-        final decoded = json.decode(response.body);
-        List<Map<String, dynamic>> fetched = [];
+      if (fetched.isNotEmpty) {
+        final localById = {
+          for (var n in _notifications)
+            if (n['id'] != null) n['id']: n
+        };
+        fetched = fetched.map((n) {
+          final id = n['id'];
+          if (id != null && localById.containsKey(id)) {
+            return {...n, 'read': localById[id]?['read'] ?? n['read']};
+          }
+          return n;
+        }).toList();
 
-        if (decoded is List) {
-          fetched = List<Map<String, dynamic>>.from(decoded);
-        } else if (decoded is Map && decoded['notifications'] is List) {
-          fetched = List<Map<String, dynamic>>.from(decoded['notifications']);
-        }
-
-        if (fetched.isNotEmpty) {
-          // Merge fetched notifications with any locally persisted state
-          // (read flags, offline-added items) keyed by id.
-          final localById = {
-            for (var n in _notifications)
-              if (n['id'] != null) n['id']: n
-          };
-          fetched = fetched.map((n) {
-            final id = n['id'];
-            if (id != null && localById.containsKey(id)) {
-              return {...n, 'read': localById[id]?['read'] ?? n['read']};
-            }
-            return n;
-          }).toList();
-
-          await box.put('items', fetched);
-          setState(() {
-            _notifications = fetched;
-            displayedNotifs = _visibleNotifications().take(notesPerPage).toList();
-          });
-        }
-      } else {
-        debugPrint("Error: ${response.statusCode}");
+        await box.put('items', fetched);
       }
+
+      if (mounted) {
+        setState(() {
+          _notifications = fetched;
+          displayedNotifs = _visibleNotifications().take(notesPerPage).toList();
+        });
+      }
+    } on ApiException catch (e) {
+      debugPrint("Notifications error: ${e.message}");
     } catch (e) {
       debugPrint("Network error: $e");
-      // Fall back to sample data so the page still has content offline.
-      if (_notifications.isEmpty) {
-        _seedSampleNotifications();
-      }
     } finally {
-      setState(() => isGettingNotifs = false);
-      if (mounted) setState(() => isLoading = false);
+      if (mounted) {
+        setState(() => isGettingNotifs = false);
+        setState(() => isLoading = false);
+      }
     }
-  }
-
-  void _seedSampleNotifications() {
-    _notifications = [
-      {
-        "id": "sample_booking_1",
-        "type": "booking",
-        "title": "New Booking Request",
-        "message":
-            "Brian wants to book Sunset Apartments on 21 Jul 2026. Tap to review the request.",
-        "time": "Just now",
-        "read": false,
-      },
-      {
-        "id": "sample_payment_1",
-        "type": "payment",
-        "title": "Payment Received",
-        "message":
-            "You received UGX 290,000 for Garden Villa booking. Transaction #TXN-8841.",
-        "time": "2 hours ago",
-        "read": false,
-      },
-      {
-        "id": "sample_upload_1",
-        "type": "propertyUpload",
-        "title": "Property Under Review",
-        "message":
-            "Your listing 'Luxury Villa Kitintale' has been received and is under admin review.",
-        "time": "5 hours ago",
-        "read": true,
-      },
-      {
-        "id": "sample_removed_1",
-        "type": "propertyRemoved",
-        "title": "Property Removed",
-        "message":
-            "Your listing 'Banda Studio' was removed by admin for missing verification documents.",
-        "time": "1 day ago",
-        "read": true,
-      },
-      {
-        "id": "sample_system_1",
-        "type": "system",
-        "title": "System Maintenance",
-        "message":
-            "Scheduled maintenance on 18 Jul 2026, 01:00–02:00 EAT. Some features may be unavailable.",
-        "time": "2 days ago",
-        "read": true,
-      },
-    ];
-    displayedNotifs = _visibleNotifications().take(notesPerPage).toList();
   }
 
   Future<void> _persistNotifications() async {
@@ -242,13 +179,9 @@ class _NotificationsPageState extends State<NotificationsPage> {
   }
 
   Future<void> _markAsReadOnServer(String? id) async {
-    if (id == null || id.toString().startsWith('sample_')) return;
+    if (id == null || id.toString().isEmpty) return;
     try {
-      await http.post(
-        Uri.parse("http://127.0.0.1:4000/notifications/mark_as_read"),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'notificationId': id}),
-      );
+      await _api.markNotificationsRead(id: id);
     } catch (e) {
       debugPrint("Mark as read error: $e");
     }
@@ -593,7 +526,9 @@ class _NotificationsPageState extends State<NotificationsPage> {
       }
     });
     _persistNotifications();
+    _api.markNotificationsRead(all: true).catchError((_) => <String, dynamic>{});
 
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text("All notifications marked as read"),

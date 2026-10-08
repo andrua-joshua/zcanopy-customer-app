@@ -1,11 +1,10 @@
 import 'dart:async';
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_app_badger/flutter_app_badger.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:hive_flutter/hive_flutter.dart';
-import 'package:http/http.dart' as http;
 import 'package:zcanopy/pages/itemDetails.dart';
+import 'package:zcanopy/services/gateway_api.dart';
 
 class PropertyMonitorService {
   static final PropertyMonitorService _instance =
@@ -13,7 +12,6 @@ class PropertyMonitorService {
   factory PropertyMonitorService() => _instance;
   PropertyMonitorService._internal();
 
-  static const _baseUrl = 'http://127.0.0.1:4000';
   Timer? _timer;
   static const _defaultLat = 0.3476;
   static const _defaultLng = 32.5825;
@@ -25,6 +23,10 @@ class PropertyMonitorService {
       FlutterLocalNotificationsPlugin();
 
   Future<void> init() async {
+    if (!Hive.isBoxOpen('propertyMonitor')) {
+      await Hive.openBox('propertyMonitor');
+    }
+
     const AndroidInitializationSettings androidSettings =
         AndroidInitializationSettings('taskBar');
 
@@ -54,28 +56,27 @@ class PropertyMonitorService {
     try {
       final lat = _getLatitude();
       final lng = _getLongitude();
-      final uri = Uri.parse(
-        '$_baseUrl/listings/nearby?lat=$lat&longitude=$lng&radius=10&limit=20',
+      final data = await GatewayApi().getNearbyProperties(
+        lat: lat,
+        long: lng,
+        radiusKm: 10,
+        limit: 20,
       );
-      final response = await http.get(uri).timeout(const Duration(seconds: 12));
+      final properties = _extractProperties(data);
+      final count = properties.length;
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body) as Map<String, dynamic>;
-        final properties = _extractProperties(data);
-        final count = properties.length;
+      final box = Hive.box('propertyMonitor');
+      await box.put('nearbyCount', count);
+      await box.put('nearbyList', properties);
 
-        await Hive.box('propertyMonitor').put('nearbyCount', count);
-        await Hive.box('propertyMonitor').put('nearbyList', properties);
-
-        if (count > 0) {
-          try { FlutterAppBadger.updateBadgeCount(count); } catch (_) {}
-        } else {
-          try { FlutterAppBadger.removeBadge(); } catch (_) {}
-        }
-
-        onCountUpdated?.call();
-        await _showPersistentNotification(count: count);
+      if (count > 0) {
+        try { FlutterAppBadger.updateBadgeCount(count); } catch (_) {}
+      } else {
+        try { FlutterAppBadger.removeBadge(); } catch (_) {}
       }
+
+      onCountUpdated?.call();
+      await _showPersistentNotification(count: count);
     } catch (e) {
       debugPrint('PropertyMonitor checkNearby error: $e');
     }

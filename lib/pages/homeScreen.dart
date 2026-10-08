@@ -9,12 +9,11 @@ import 'package:zcanopy/pages/userProfile.dart';
 import 'package:zcanopy/pages/explorer.dart';
 import 'package:zcanopy/pages/itemDetails.dart';
 import 'package:zcanopy/pages/loadIndicator.dart';
-import 'package:zcanopy/services/api_service.dart';
+import 'package:zcanopy/services/gateway_api.dart';
 import 'package:zcanopy/pages/notifications.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:zcanopy/utils/currency.dart';
 import 'package:zcanopy/pages/session.dart';
-import 'package:zcanopy/services/api_service.dart';
 import 'package:zcanopy/widgets/tiktok_video_reel.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -26,7 +25,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomePageState extends State<HomeScreen> {
   final ScrollController _scrollController = ScrollController();
-  final _apiService = ApiService();
+  final _apiService = GatewayApi();
   final database = Hive.box("myStore");
 
   static const Map<String, IconData> _categoryIcons = {
@@ -41,88 +40,10 @@ class _HomePageState extends State<HomeScreen> {
     'Hotel': Icons.hotel,
   };
 
-  List<Map<String, dynamic>> allProperties = [
-    {
-      'id': 'p1',
-      'type': 'House',
-      'name': 'Bungalow in Ntinda',
-      'price': 250000000,
-      'location': 'Ntinda',
-      'subCounty': 'Ntinda',
-      'district': 'Kampala Central',
-      'status': 'Available',
-      'image': 'https://picsum.photos/400/200?1',
-      'uploadDate': '2024-05-12',
-      'description':
-          'Mutaasa brokers, 1 dining room, 2 toilets, spacious compound, secure gated community.',
-      'mapLocation': {'lat': 0.3476, 'lng': 32.5825},
-      'video': 'https://flutter.github.io/assets-for-api-docs/assets/videos/bee.mp4',
-      'bookState': {'isBooked': false, 'bookingCount': 0},
-      'brokerCode': 'BRK-MUTAASA',
-      'brokerName': 'Mutaasa Brokers',
-      'brokerPhone': '+256701234567',
-    },
-    {
-      'id': 'p2',
-      'type': 'Apartment',
-      'name': 'Modern Apartment in Kisaasi',
-      'price': 750000,
-      'location': 'Kisaasi',
-      'subCounty': 'Kisaasi',
-      'district': 'Kampala North',
-      'status': 'Booked',
-      'image': 'https://picsum.photos/400/200?2',
-      'uploadDate': '2024-06-01',
-      'description':
-          'Mutaasa brokers, 2 bedrooms, 1 dining room, 2 toilets, balcony with city view.',
-      'mapLocation': {'lat': 0.369, 'lng': 32.56},
-      'video': 'https://flutter.github.io/assets-for-api-docs/assets/videos/butterfly.mp4',
-      'bookState': {'isBooked': true, 'bookingCount': 3},
-      'brokerCode': 'BRK-KISAA',
-      'brokerName': 'Kisaasi Realty',
-      'brokerPhone': '+256702345678',
-    },
-    {
-      'id': 'p3',
-      'type': 'Condominium',
-      'name': 'Condo in Naalya',
-      'price': 150000000,
-      'location': 'Naalya',
-      'subCounty': 'Naalya',
-      'district': 'Kampala North',
-      'status': 'Available',
-      'image': 'https://picsum.photos/400/200?3',
-      'uploadDate': '2024-06-10',
-      'description':
-          'Mutaasa brokers, 3 bedrooms, 1 dining room, 3 toilets, swimming pool access.',
-      'mapLocation': {'lat': 0.398, 'lng': 32.62},
-      'video': 'https://flutter.github.io/assets-for-api-docs/assets/videos/bee.mp4',
-      'bookState': {'isBooked': false, 'bookingCount': 1},
-      'brokerCode': 'BRK-MUTAASA',
-      'brokerName': 'Mutaasa Brokers',
-      'brokerPhone': '+256701234567',
-    },
-    {
-      'id': 'p4',
-      'type': 'House',
-      'name': 'Rental House in Bweyogerere',
-      'price': 400000,
-      'location': 'Bweyogerere',
-      'subCounty': 'Bweyogerere',
-      'district': 'Wakiso',
-      'status': 'Available',
-      'image': 'https://picsum.photos/400/200?4',
-      'uploadDate': '2024-07-02',
-      'description':
-          'Mutaasa brokers, 2 bedrooms, 1 dining room, 1 toilet, near main road.',
-      'mapLocation': {'lat': 0.357, 'lng': 32.65},
-      'video': '',
-      'bookState': {'isBooked': false, 'bookingCount': 0},
-      'brokerCode': 'BRK-WAKISO',
-      'brokerName': 'Wakiso Homes',
-      'brokerPhone': '+256703456789',
-    },
-  ];
+  List<Map<String, dynamic>> allProperties = [];
+  int _page = 1;
+  bool _hasMore = true;
+  bool _loadFailed = false;
 
   List<Map<String, dynamic>> displayedProperties = [];
   List<Map<String, dynamic>> reels = [];
@@ -167,7 +88,7 @@ class _HomePageState extends State<HomeScreen> {
       if (_scrollController.position.pixels >=
               _scrollController.position.maxScrollExtent - 200 &&
           !isLoadingMore &&
-          displayedProperties.length < allProperties.length) {
+          _hasMore) {
         loadMoreData();
       }
     });
@@ -271,45 +192,67 @@ class _HomePageState extends State<HomeScreen> {
 
     try {
       final response = await _apiService.getCustomerProperties(
-        sessionToken: _apiService.currentSessionId ?? '',
-        latitude: null,
-        longitude: null,
         page: 1,
-        limit: 50,
+        limit: 20,
       );
 
-      if (response['success'] == true && response['properties'] is List) {
-        final fetched = (response['properties'] as List)
-            .map((e) => Map<String, dynamic>.from(e))
-            .toList();
-        if (mounted) {
-          setState(() {
-            allProperties = fetched;
-            displayedProperties = fetched;
-            _rebuildReels();
-            isLoading = false;
-          });
-        }
-        return;
+      final fetched = (response['properties'] as List? ?? [])
+          .whereType<Map<String, dynamic>>()
+          .toList();
+      if (mounted) {
+        setState(() {
+          allProperties = fetched;
+          displayedProperties = List.from(fetched);
+          _page = 1;
+          _hasMore = fetched.length >= 20;
+          _loadFailed = false;
+          isLoading = false;
+          _rebuildReels();
+        });
       }
     } catch (e) {
       print('Load properties error: $e');
+      if (mounted) {
+        setState(() {
+          allProperties = [];
+          displayedProperties = [];
+          _hasMore = false;
+          _loadFailed = true;
+          isLoading = false;
+          _rebuildReels();
+        });
+      }
     }
-
-    if (!mounted) return;
-    await Future.delayed(const Duration(seconds: 1));
-    setState(() {
-      displayedProperties = List.from(allProperties);
-      _rebuildReels();
-      isLoading = false;
-    });
   }
 
   Future<void> loadMoreData() async {
+    if (isLoadingMore || !_hasMore) return;
     setState(() => isLoadingMore = true);
-    await Future.delayed(const Duration(seconds: 1));
-    if (mounted) {
-      setState(() => isLoadingMore = false);
+    try {
+      final response = await _apiService.getCustomerProperties(
+        page: _page + 1,
+        limit: 20,
+      );
+      final next = (response['properties'] as List? ?? [])
+          .whereType<Map<String, dynamic>>()
+          .toList();
+      if (mounted) {
+        setState(() {
+          if (next.isEmpty) {
+            _hasMore = false;
+          } else {
+            _page++;
+            allProperties.addAll(next);
+            displayedProperties = List.from(allProperties);
+            _rebuildReels();
+          }
+        });
+      }
+    } catch (e) {
+      print('Load more properties error: $e');
+      if (mounted) setState(() => _hasMore = false);
+    } finally {
+      if (mounted) setState(() => isLoadingMore = false);
     }
   }
 
@@ -1158,6 +1101,36 @@ class _HomePageState extends State<HomeScreen> {
                         ...displayedProperties.map((property) {
                           return _buildPropertyCard(property);
                         }),
+                        if (!isLoading && displayedProperties.isEmpty)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 32),
+                            child: Column(
+                              children: [
+                                Icon(
+                                  _loadFailed
+                                      ? Icons.cloud_off
+                                      : Icons.search_off,
+                                  size: 42,
+                                  color: Colors.grey,
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  _loadFailed
+                                      ? "Couldn't reach the server."
+                                      : "No properties found.",
+                                  style: const TextStyle(color: Colors.grey),
+                                ),
+                                const SizedBox(height: 8),
+                                TextButton(
+                                  onPressed: () {
+                                    setState(() => isLoading = true);
+                                    loadInitialData();
+                                  },
+                                  child: const Text("Retry"),
+                                ),
+                              ],
+                            ),
+                          ),
                         if (isLoadingMore)
                           const Padding(
                             padding: EdgeInsets.symmetric(vertical: 20),

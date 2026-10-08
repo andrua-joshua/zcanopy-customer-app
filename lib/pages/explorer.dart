@@ -1,17 +1,14 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:video_player/video_player.dart';
 import 'package:zcanopy/pages/welcome.dart';
 import 'package:zcanopy/pages/filter_wizard.dart';
-import 'package:zcanopy/pages/loadIndicator.dart';
 import 'package:zcanopy/pages/itemDetails.dart';
-import 'package:http/http.dart' as http;
-import 'package:zcanopy/pages/network.dart';
-import 'dart:convert';
 import 'package:zcanopy/pages/session.dart';
-import 'package:zcanopy/services/api_service.dart';
+import 'package:zcanopy/services/gateway_api.dart';
 import 'package:zcanopy/pages/notifications.dart';
-import 'package:zcanopy/utils/colors.dart';
 import 'package:zcanopy/utils/currency.dart';
 import 'package:zcanopy/widgets/tiktok_video_reel.dart';
 
@@ -55,7 +52,8 @@ class _ExplorePageState extends State<ExplorePage> {
   ];
 
   final ScrollController _scrollController = ScrollController();
-  List<dynamic> _items = [];
+  final _api = GatewayApi();
+  List<Map<String, dynamic>> _items = [];
   bool _isLoading = false;
   bool _hasMore = true;
   int _page = 1;
@@ -80,185 +78,15 @@ class _ExplorePageState extends State<ExplorePage> {
   final ScrollController _reelScrollController = ScrollController();
   final Set<String> _savedProperties = {};
 
-  Map<String, List<Map<String, dynamic>>> regions = {
-    "Kampala": [
-      {
-        'id': 'e1',
-        'type': 'House',
-        'name': 'Bungalow in Ntinda',
-        'price': 250000000,
-        'location': 'Ntinda',
-        'subCounty': 'Ntinda',
-        'district': 'Kampala Central',
-        'status': 'Available',
-        'image': 'https://picsum.photos/400/200?10',
-        'description': 'Mutaasa brokers, 1 dining room, 2 toilets, spacious compound, secure gated community.',
-        'mapLocation': {'lat': 0.3476, 'lng': 32.5825},
-        'video': '',
-        'bookState': {'isBooked': false, 'bookingCount': 0},
-        'brokerCode': 'BRK-MUTAASA',
-        'brokerName': 'Mutaasa Brokers',
-        'brokerPhone': '+256701234567',
-      },
-      {
-        'id': 'e2',
-        'type': 'Apartment',
-        'name': 'Modern Apartment in Kisaasi',
-        'price': 750000,
-        'location': 'Kisaasi',
-        'subCounty': 'Kisaasi',
-        'district': 'Kampala North',
-        'status': 'Available',
-        'image': 'https://picsum.photos/400/200?11',
-        'description': 'Mutaasa brokers, 2 bedrooms, 1 dining room, 2 toilets, balcony with city view.',
-        'mapLocation': {'lat': 0.369, 'lng': 32.56},
-        'video': '',
-        'bookState': {'isBooked': false, 'bookingCount': 0},
-        'brokerCode': 'BRK-KISAA',
-        'brokerName': 'Kisaasi Realty',
-        'brokerPhone': '+256702345678',
-      },
-    ],
-    "Wakiso": [
-      {
-        'id': 'e3',
-        'type': 'House',
-        'name': 'Rental House in Bweyogerere',
-        'price': 400000,
-        'location': 'Bweyogerere',
-        'subCounty': 'Bweyogerere',
-        'district': 'Wakiso',
-        'status': 'Available',
-        'image': 'https://picsum.photos/400/200?12',
-        'description': '2 bedrooms, 1 dining room, 1 toilet, near main road.',
-        'mapLocation': {'lat': 0.357, 'lng': 32.65},
-        'video': '',
-        'bookState': {'isBooked': false, 'bookingCount': 0},
-        'brokerCode': 'BRK-WAKISO',
-        'brokerName': 'Wakiso Homes',
-        'brokerPhone': '+256703456789',
-      },
-    ],
-    "Entebbe": [
-      {
-        'id': 'e4',
-        'type': 'Condominium',
-        'name': 'Luxury Condo',
-        'price': 250000,
-        'location': 'Entebbe',
-        'subCounty': 'Entebbe',
-        'district': 'Entebbe',
-        'status': 'Available',
-        'image': 'https://picsum.photos/400/200?13',
-        'description': '4 bedrooms, 3 bathrooms, living room, kitchen.',
-        'mapLocation': {'lat': 0.054, 'lng': 32.463},
-        'video': '',
-        'bookState': {'isBooked': false, 'bookingCount': 0},
-        'brokerCode': 'BRK-MUTAASA',
-        'brokerName': 'Mutaasa Brokers',
-        'brokerPhone': '+256701234567',
-      },
-    ],
-    "Jinja": [
-      {
-        'id': 'e5',
-        'type': 'Flat',
-        'name': 'Cozy Flat',
-        'price': 800000,
-        'location': 'Jinja',
-        'subCounty': 'Jinja',
-        'district': 'Jinja',
-        'status': 'Available',
-        'image': 'https://picsum.photos/400/200?14',
-        'description': '2 bedrooms, 1 bathroom, living room, no kitchen.',
-        'mapLocation': {'lat': 0.424, 'lng': 33.204},
-        'video': '',
-        'bookState': {'isBooked': false, 'bookingCount': 0},
-        'brokerCode': 'BRK-KISAA',
-        'brokerName': 'Kisaasi Realty',
-        'brokerPhone': '+256702345678',
-      },
-    ],
-  };
+  Map<String, List<Map<String, dynamic>>> regions = {};
   var displayedRegions = {};
 
   List<String> regionsX = ["Region A", "Region B"];
 
-  Map<String, List<Map<String, dynamic>>> _filterRegions() {
-    if (selectedCategory == "All") {
-      return regions;
-    }
-    Map<String, List<Map<String, dynamic>>> filteredRegions = {};
-    displayedRegions.forEach((regionName, items) {
-      List<Map<String, dynamic>> filteredItems = items
-          .where((item) => item['propertyType'] == selectedCategory)
-          .toList();
-      if (filteredItems.isNotEmpty) {
-        filteredRegions[regionName] = filteredItems;
-      }
-    });
-    return filteredRegions;
-  }
-
-  Future<void> _reloadList() async {
-    await Future.delayed(const Duration(seconds: 2));
-    setState(() {
-      regions = {
-        "Region A": [
-          {
-            "name": "Modern Apartment",
-            "location": "Kampala",
-            "price": 120000,
-            "bedrooms": 3,
-            "bathrooms": 2,
-            "livingRoom": true,
-            "kitchen": true,
-            "image": "https://picsum.photos/200/120?random=1",
-            "propertyType": "Apartment"
-          },
-          {
-            "name": "Luxury Condo",
-            "location": "Entebbe",
-            "price": 250000,
-            "bedrooms": 4,
-            "bathrooms": 3,
-            "livingRoom": true,
-            "kitchen": true,
-            "image": "https://picsum.photos/200/120?random=2",
-            "propertyType": "Condominium"
-          },
-        ],
-        "Region B": [
-          {
-            "name": "Cozy Flat",
-            "location": "Jinja",
-            "price": 800000,
-            "bedrooms": 2,
-            "bathrooms": 1,
-            "livingRoom": true,
-            "kitchen": false,
-            "image": "https://picsum.photos/200/120?random=3",
-            "propertyType": "Flat"
-          },
-          {
-            "name": "Family House",
-            "location": "Gulu",
-            "price": 180000,
-            "bedrooms": 5,
-            "bathrooms": 3,
-            "livingRoom": true,
-            "kitchen": true,
-            "image": "https://picsum.photos/200/120?random=4",
-            "propertyType": "House"
-          },
-        ],
-      };
-    });
-  }
-
   Future<void> forceLogout(BuildContext context) async {
     final database = Hive.box('myStore');
     await database.clear();
+    if (!context.mounted) return;
     Navigator.pushAndRemoveUntil(
       context,
       MaterialPageRoute(builder: (_) => const OnBoardingScreen()),
@@ -269,65 +97,101 @@ class _ExplorePageState extends State<ExplorePage> {
   Future<void> _fetchItems({bool refresh = false}) async {
     if (_isLoading) return;
     if (refresh) {
-      setState(() {
-        _page = 1;
-        _items.clear();
-        _hasMore = true;
-      });
+      _page = 1;
+      _hasMore = true;
     }
+    if (!_hasMore && !refresh) return;
     setState(() => _isLoading = true);
-    final isSessionValid = await SessionService.validateSession();
-    if (!isSessionValid) {
-      if (mounted) await forceLogout(context);
-    }
+
+    final minPrice = double.tryParse(minPriceCtrl.text);
+    final maxPrice = double.tryParse(maxPriceCtrl.text);
+
     try {
-      final url = Uri.parse(
-          "https://my-server-url/get-all-properties?region=wakiso&_limit=$_limit&_page=$_page");
-      final response = await http.get(url);
-      if (response.statusCode == 200) {
-        final List<dynamic> data = json.decode(response.body);
-        setState(() {
-          if (data.isNotEmpty) {
-            _items.addAll(data);
-            _page++;
-          } else {
-            _hasMore = false;
-          }
-        });
-      } else {
-        debugPrint("Error: ${response.statusCode}");
+      final response = await _api.searchProperties(
+        query: searchQuery.isEmpty ? null : searchQuery,
+        location: selectedLocation == 'All' ? null : selectedLocation,
+        propertyType: selectedCategory == 'All' ? null : selectedCategory,
+        minPrice: minPrice,
+        maxPrice: maxPrice,
+        page: _page,
+        limit: _limit,
+      );
+
+      final next = (response['properties'] as List? ?? [])
+          .whereType<Map<String, dynamic>>()
+          .toList();
+
+      if (!mounted) return;
+      setState(() {
+        if (refresh) {
+          _items = List.from(next);
+        } else {
+          _items.addAll(next);
+        }
+        if (next.length < _limit) {
+          _hasMore = false;
+        } else {
+          _page++;
+        }
+        _rebuildFromItems();
+        isLoading = false;
+      });
+
+      if (refresh && searchQuery.isNotEmpty) {
+        _api
+            .recordSearch(
+              query: searchQuery,
+              location: selectedLocation == 'All' ? null : selectedLocation,
+              propertyType:
+                  selectedCategory == 'All' ? null : selectedCategory,
+              minPrice: minPrice,
+              maxPrice: maxPrice,
+              resultCount: next.length,
+            )
+            .catchError((_) => <String, dynamic>{});
       }
     } catch (e) {
-      debugPrint("Network error: $e");
+      debugPrint('Explorer fetch error: $e');
+      if (mounted) {
+        setState(() {
+          if (refresh) {
+            _items = [];
+            _rebuildFromItems();
+          }
+          isLoading = false;
+        });
+      }
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  void _onScroll() {
-    if (_scrollController.position.pixels >=
-            _scrollController.position.maxScrollExtent - 200 &&
-        !_isLoading &&
-        _hasMore) {
-      _fetchItems();
+  void _rebuildFromItems() {
+    final grouped = <String, List<Map<String, dynamic>>>{};
+    for (final item in _items) {
+      final district = (item['district'] ?? '').toString();
+      final loc = (item['location'] ?? '').toString();
+      final key = district.isNotEmpty
+          ? district
+          : (loc.isNotEmpty ? loc : 'Other');
+      grouped.putIfAbsent(key, () => []).add(item);
     }
-  }
-
-  Future<void> _refresh() async {
-    await _fetchItems(refresh: true);
+    regions = grouped;
+    displayedRegions = Map.from(grouped);
+    regionsX = regions.keys.toList();
+    _displayedItems = List.from(_items);
   }
 
   @override
   void initState() {
     super.initState();
-    _fetchItems();
     loadInitialData();
     _scrollController.addListener(() {
       if (_scrollController.position.pixels >=
               _scrollController.position.maxScrollExtent - 200 &&
-          !isLoadingMore &&
-          displayedRegions.length < regions.length) {
-        loadMoreData();
+          !_isLoading &&
+          _hasMore) {
+        _fetchItems();
       }
     });
   }
@@ -346,70 +210,12 @@ class _ExplorePageState extends State<ExplorePage> {
   }
 
   Future<void> loadInitialData() async {
-    try {
-      final url = Uri.parse(
-          "https://my-server-url/get-all-properties?region=wakiso&_limit=50&_page=1");
-      final response = await http.get(url);
-      if (response.statusCode == 200) {
-        final List<dynamic> data = json.decode(response.body);
-        if (data.isNotEmpty) {
-          final fetchedRegions = <String, List<Map<String, dynamic>>>{};
-          for (final item in data) {
-            final loc = item['location']?.toString() ?? 'Unknown';
-            fetchedRegions.putIfAbsent(loc, () => [])
-                .add(Map<String, dynamic>.from(item));
-          }
-          if (fetchedRegions.isNotEmpty) {
-            if (mounted) {
-              setState(() {
-                regions = fetchedRegions;
-                _displayedItems = [];
-                regions.forEach((_, items) {
-                  _displayedItems.addAll(items.map((e) => Map<String, dynamic>.from(e)));
-                });
-                isLoading = false;
-              });
-            }
-            regionsX = regions.keys.toList();
-            return;
-          }
-        }
-      }
-    } catch (e) {
-      debugPrint("Network error: $e");
+    final isSessionValid = await SessionService.validateSession();
+    if (!isSessionValid) {
+      if (mounted) await forceLogout(context);
+      return;
     }
-    await Future.delayed(const Duration(seconds: 2));
-    setState(() {
-      _displayedItems = [];
-      regions.forEach((_, items) {
-        _displayedItems.addAll(items.map((e) => Map<String, dynamic>.from(e)));
-      });
-      isLoading = false;
-    });
-    regionsX = regions.keys.toList();
-  }
-
-  fetchData(itemsPerPage) async {
-    try {
-      final data = await NetworkService.get(
-          'http://127.0.0.1:4000/listings/get-nearby-properties?itemPerPage=${itemsPerPage}');
-      return data;
-    } catch (e) {
-      print(e);
-    }
-  }
-
-  Future<void> loadMoreData() async {
-    setState(() => isLoadingMore = true);
-    await Future.delayed(const Duration(seconds: 2));
-    setState(() {
-      final start = displayedRegions.length;
-      final end = (start + itemsPerPage).clamp(0, regions.length);
-      displayedRegions.addAll(Map.fromEntries(regions.entries
-          .skip(start)
-          .take(end - start)));
-      isLoadingMore = false;
-    });
+    await _fetchItems(refresh: true);
   }
 
   void applyFilters() {
@@ -444,7 +250,13 @@ class _ExplorePageState extends State<ExplorePage> {
     setState(() {
       _displayedItems = filtered;
     });
+
+    _filterDebounce?.cancel();
+    _filterDebounce =
+        Timer(const Duration(milliseconds: 600), () => _fetchItems(refresh: true));
   }
+
+  Timer? _filterDebounce;
 
   void openFilterSheet() {
     showModalBottomSheet(
@@ -551,26 +363,6 @@ class _ExplorePageState extends State<ExplorePage> {
     );
   }
 
-  List<Map<String, dynamic>> _getDisplayedProperties() {
-    final all = <Map<String, dynamic>>[];
-    regions.forEach((_, items) {
-      all.addAll(items.map((e) => Map<String, dynamic>.from(e)));
-    });
-    final minPrice = double.tryParse(maxPriceCtrl.text);
-    final maxPrice = double.tryParse(maxPriceCtrl.text);
-    return all.where((prop) {
-      final matchesType = selectedType == 'All' || prop['type'] == selectedType;
-      final matchesSearch = (prop['name'] as String)
-          .toLowerCase()
-          .contains(searchQuery.toLowerCase());
-      final matchesLocation = selectedLocation == 'All' ||
-          prop['location'] == selectedLocation;
-      final matchesPrice = (minPrice == null || prop['price'] >= minPrice) &&
-          (maxPrice == null || prop['price'] <= maxPrice);
-      return matchesType && matchesSearch && matchesLocation && matchesPrice;
-    }).toList();
-  }
-
   void _openDetails(Map<String, dynamic> property) {
     Navigator.push(
       context,
@@ -578,16 +370,6 @@ class _ExplorePageState extends State<ExplorePage> {
         builder: (_) => PropertyDetailsPage(property: property),
       ),
     );
-  }
-
-  Map<String, List<Map<String, dynamic>>> _districtGroups() {
-    final displayed = _getDisplayedProperties();
-    final grouped = <String, List<Map<String, dynamic>>>{};
-    for (final prop in displayed) {
-      final district = prop['district']?.toString() ?? prop['location']?.toString() ?? 'Other';
-      grouped.putIfAbsent(district, () => []).add(prop);
-    }
-    return grouped;
   }
 
   List<Map<String, dynamic>> get _videoTours => _displayedItems

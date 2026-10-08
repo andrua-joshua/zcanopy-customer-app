@@ -1,15 +1,13 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:zcanopy/pages/welcome.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
 import 'package:zcanopy/pages/loadIndicator.dart';
-import 'package:zcanopy/pages/network.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:zcanopy/pages/session.dart';
 import 'package:zcanopy/utils/theme_extensions.dart';
-import 'package:zcanopy/services/api_service.dart';
+import 'package:zcanopy/services/gateway_api.dart';
 import 'package:zcanopy/utils/colors.dart';
+import 'package:zcanopy/utils/property_normalizer.dart';
 
 class PaymentsPage extends StatefulWidget {
   const PaymentsPage({super.key});
@@ -22,200 +20,24 @@ class _PaymentsPageState extends State<PaymentsPage> {
   final ScrollController _scrollController = ScrollController();
   final TextEditingController numberEditCtrl = TextEditingController();
   final database = Hive.box('myStore');
-  final _apiService = ApiService();
+  final _api = GatewayApi();
+  int _page = 1;
+  bool _hasMore = true;
   var userID;
 
-  // Track the selected payment method
-  int _selectedPaymentMethod = 0; // 0 for MTN, 1 for Airtel
   bool _isLoading = true;
-  bool _isPaying = false;
   bool isLoading = false;
   bool isLoadingMore = false;
   final int TXNPerPage = 2;
   List<Map<String, dynamic>> displayedTXN = [];
-  final _formKey = GlobalKey<FormState>();
   String phoneNumber = '';
   bool _isRetrieving = false;
   final TextEditingController _codeCtrl = TextEditingController();
   final TextEditingController _phoneRetrieveCtrl = TextEditingController();
-  // Sample transaction data with IDs
-  List<Map<String, dynamic>> _transactions = [
-    {
-      'id': 'TXN001',
-      'amount': 'UGX 20,000 recieved',
-      'method': 'MTN Mobile Money',
-      'date': '2025-08-20',
-      'status': 'Success',
-      'color': Colors.green,
-      "type": "transaction",
-      "package": "fibrous",
-    },
-    {
-      'id': 'TXN002',
-      'amount': 'UGX 35,000 recieved',
-      'method': 'Airtel Money',
-      'date': '2025-08-18',
-      'status': 'Failed',
-      'color': Colors.red,
-      "type": "transaction",
-      "package": "prop",
-    },
-    {
-      'id': 'TXN003',
-      'amount': 'UGX 40,000 recieved',
-      'method': 'MTN Mobile Money',
-      'date': '2025-08-18',
-      'status': 'Success',
-      'color': Colors.green,
-      "type": "transaction",
-      "package": "fibrous",
-    },
-    {
-      'id': 'TXN001',
-      'amount': 'UGX 20,000 recieved',
-      'method': 'MTN Mobile Money',
-      'date': '2025-08-20',
-      'status': 'Success',
-      'color': Colors.green,
-      "type": "transaction",
-      "package": "buttress",
-    },
-    {
-      'id': 'TXN002',
-      'amount': 'UGX 35,000 recieved',
-      'method': 'Airtel Money',
-      'date': '2025-08-18',
-      'status': 'Failed',
-      'color': Colors.red,
-      "type": "transaction",
-      "package": "prop",
-    },
-    {
-      'id': 'TXN003',
-      'amount': 'UGX 40,000 recieved',
-      'method': 'MTN Mobile Money',
-      'date': '2025-08-18',
-      'status': 'Success',
-      'color': Colors.green,
-      "type": "transaction",
-      "package": "buttress",
-    },
-    {
-      'id': 'TXN001',
-      'amount': 'UGX 20,000 recieved',
-      'method': 'MTN Mobile Money',
-      'date': '2025-08-20',
-      'status': 'Success',
-      'color': Colors.green,
-      "type": "transaction",
-      "package": "fibrous",
-    },
-    {
-      'id': 'TXN002',
-      'amount': 'UGX 35,000 recieved',
-      'method': 'Airtel Money',
-      'date': '2025-08-18',
-      'status': 'Failed',
-      'color': Colors.red,
-      "type": "transaction",
-      "package": "prop",
-    },
-    {
-      'id': 'TXN003',
-      'amount': 'UGX 40,000 recieved',
-      'method': 'MTN Mobile Money',
-      'date': '2025-08-18',
-      'status': 'Success',
-      'color': Colors.green,
-      "type": "transaction",
-      "package": "fibrous",
-    },
-  ];
-
-  Future<void> _getTransations() async {
-    //network simulation
-    await Future.delayed(const Duration(seconds: 2));
-    setState(() {});
-  }
-
-  Future<void> _fetchItems({bool refresh = false}) async {
-    if (_isLoading) return;
-
-    if (refresh) {
-      setState(() {
-        _transactions.clear();
-      });
-    }
-
-    setState(() => _isLoading = true);
-
-    try {
-      final response = await _apiService.getTransactionRecords(
-        userId: userID,
-      );
-
-      if (response['success'] == true) {
-        setState(() {
-          final data = response['data'] as List? ?? [];
-          if (data.isNotEmpty) {
-            _transactions.addAll(data.map((e) => Map<String, dynamic>.from(e)));
-          }
-        });
-      } else {
-        debugPrint("Error: ${response['message']}");
-      }
-    } catch (e) {
-      debugPrint("Network error: $e");
-    } finally {
-      setState(() => _isLoading = false);
-    }
-  }
-
-  Future<void> _initiateMobileMoneyPayment() async {
-    setState(() => _isPaying = true);
-
-    try {
-      final response = await _apiService.initiateMobileMoneyPayment(
-        phoneNumber: phoneNumber,
-        amount: '15000',
-        userId: userID,
-      );
-
-      if (response['success'] == true) {
-        setState(() {
-          print("payment results: ${response}");
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Payment initiated successfully!"),
-            backgroundColor: Colors.green,
-          ),
-        );
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(response['message'] ?? "Payment failed"),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    } catch (e) {
-      debugPrint("Network error: $e");
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Network error. Please try again."),
-          backgroundColor: Colors.red,
-        ),
-      );
-    } finally {
-      setState(() => _isPaying = false);
-    }
-  }
-
+  List<Map<String, dynamic>> _transactions = [];
   @override
   void initState() {
     super.initState();
-    _getTransations();
     userID = database.get('userID');
     _codeCtrl.text = database.get('customerCode')?.toString() ?? '';
     _phoneRetrieveCtrl.text = database.get('phoneNumber')?.toString() ?? '';
@@ -231,7 +53,7 @@ class _PaymentsPageState extends State<PaymentsPage> {
       if (_scrollController.position.pixels >=
               _scrollController.position.maxScrollExtent - 200 &&
           !isLoadingMore &&
-          displayedTXN.length < _transactions.length) {
+          _hasMore) {
         loadMoreData();
       }
     });
@@ -253,89 +75,110 @@ class _PaymentsPageState extends State<PaymentsPage> {
     });
 
     try {
-      final data = await _apiService.getCustomerPaymentsByCode(
+      final data = await _api.retrievePayment(
         code: code.trim(),
         phoneNumber: phone.trim(),
       );
-
-      if (data['success'] == true) {
-        final fetched = List<Map<String, dynamic>>.from(data['payments'] ?? []);
+      final dynamic raw = data['payments'] ??
+          data['transactions'] ??
+          data['data'] ??
+          (data['id'] != null ? [data] : const []);
+      final fetched = normalizeTransactions(raw);
+      if (mounted) {
         setState(() {
           _transactions = fetched;
           displayedTXN = fetched.take(TXNPerPage).toList();
           _isRetrieving = false;
           _isLoading = false;
         });
-      } else {
+      }
+      if (fetched.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("No payments found for that code")),
+        );
+      }
+    } on ApiException catch (e) {
+      print('Error retrieving payments: ${e.message}');
+      if (mounted) {
+        setState(() {
+          _transactions = [];
+          displayedTXN = [];
+          _isRetrieving = false;
+          _isLoading = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.message)),
+        );
+      }
+    } catch (e) {
+      print('Error retrieving payments: $e');
+      if (mounted) {
         setState(() {
           displayedTXN = _transactions.take(TXNPerPage).toList();
           _isRetrieving = false;
           _isLoading = false;
         });
       }
-    } catch (e) {
-      print('Error retrieving payments: $e');
-      setState(() {
-        displayedTXN = _transactions.take(TXNPerPage).toList();
-        _isRetrieving = false;
-        _isLoading = false;
-      });
     }
   }
 
   Future<void> loadInitialData() async {
     userID = database.get('userID');
+    final isSessionValid = await SessionService.validateSession();
+    if (!isSessionValid) {
+      if (mounted) await forceLogout(context);
+      return;
+    }
 
+    setState(() {
+      isLoading = true;
+      _isLoading = true;
+    });
+    await _fetchPage(1, replace: true);
+    if (mounted) {
+      setState(() {
+        isLoading = false;
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _fetchPage(int page, {bool replace = false}) async {
     try {
-      if (userID != null && userID.toString().isNotEmpty) {
-        final response = await _apiService.getTransactionRecords(
-          userId: userID.toString(),
-        );
-
-        if (response['success'] == true && response['data'] is List) {
-          final fetched = (response['data'] as List)
-              .map((e) => Map<String, dynamic>.from(e))
-              .toList();
-          if (mounted) {
-            setState(() {
-              _transactions = fetched;
-              displayedTXN = fetched.take(TXNPerPage).toList();
-              _isLoading = false;
-              isLoading = false;
-            });
-          }
-          return;
+      final response = await _api.getTransactions(page: page, limit: TXNPerPage);
+      final fetched = normalizeTransactions(
+          response['transactions'] ?? response['data'] ?? response['payments']);
+      if (!mounted) return;
+      setState(() {
+        if (replace) {
+          _transactions = fetched;
+          displayedTXN = fetched.take(TXNPerPage).toList();
+          _page = 1;
+        } else {
+          _transactions.addAll(fetched);
+          displayedTXN.addAll(fetched);
+          _page = page;
         }
+        _hasMore = fetched.length >= TXNPerPage;
+      });
+    } on ApiException catch (e) {
+      print('Load transactions error: ${e.message}');
+      if (mounted && replace) {
+        setState(() {
+          _transactions = [];
+          displayedTXN = [];
+        });
       }
     } catch (e) {
       print('Load transactions error: $e');
     }
-
-    if (!mounted) return;
-    await Future.delayed(const Duration(seconds: 2));
-    setState(() {
-      displayedTXN = _transactions.take(TXNPerPage).toList();
-      isLoading = false;
-      _isLoading = false;
-    });
   }
 
   Future<void> loadMoreData() async {
-    /*
-    final data = await fetchData(userID);
-    setState(() {
-    _transactions = data.transactions;     
-      isLoadingMore=data.isLoadingMore;
-    });*/
-
+    if (!_hasMore || isLoadingMore) return;
     setState(() => isLoadingMore = true);
-    await Future.delayed(const Duration(seconds: 2));
-    setState(() {
-      final start = displayedTXN.length;
-      final end = (start + TXNPerPage).clamp(0, _transactions.length);
-      displayedTXN.addAll(_transactions.sublist(start, end));
-      isLoadingMore = false;
-    });
+    await _fetchPage(_page + 1);
+    if (mounted) setState(() => isLoadingMore = false);
   }
 
   Future<void> forceLogout(BuildContext context) async {
@@ -352,68 +195,40 @@ class _PaymentsPageState extends State<PaymentsPage> {
   Future<bool> initiatePayment() async {
     final isSessionValid = await SessionService.validateSession();
     if (!isSessionValid) {
-      if (mounted) {
-        await forceLogout(context);
-      }
-    }
-
-    setState(() {
-      _isPaying = true;
-    });
-
-    final payload = {
-      "userID": database.get('userID'),
-      "amount": database.get('amount'),
-      "package": database.get('package'),
-      "status": database.get('status'),
-    };
-
-    final response = await postData(payload);
-    if (response.success) {
-      database.add({"subscriptionStatus", "${response.status}"});
-      database.add({"amount", response.amount});
-      database.add({"package", "${response.package}"});
-      database.add({"remainingDays", response.remainingDays});
-      database.add({"totalDays", response.totalDays});
-      database.add({
-        "dataAvailable",
-        true,
-      }); //to retrieve instead of accessing the net again
-
-      setState(() {
-        _isPaying = false;
-      });
-
-      return true;
-    } else {
-      setState(() {
-        _isPaying = false;
-      });
-
+      if (mounted) await forceLogout(context);
       return false;
     }
-  }
 
-  fetchData(userID) async {
     try {
-      final data = await NetworkService.get(
-        'http://127.0.0.1:4000/payment/get-transaction-records?user_id=${userID}',
+      final amount = num.tryParse(database.get('amount')?.toString() ?? '') ?? 0;
+      final response = await _api.initiatePayment(
+        phoneNumber: phoneNumber,
+        amount: amount,
+        userId: database.get('userID')?.toString() ?? '',
       );
-      return data;
+      final ok = response['success'] == true ||
+          (response['status']?.toString().toLowerCase() ?? '') == 'success';
+      if (ok) {
+        await database.put('amount', response['amount'] ?? amount);
+        await database.put('package',
+            response['package'] ?? database.get('package'));
+        await database.put('status',
+            response['status'] ?? database.get('status'));
+        if (response['remainingDays'] != null) {
+          await database.put('remainingDays', response['remainingDays']);
+        }
+        if (response['totalDays'] != null) {
+          await database.put('totalDays', response['totalDays']);
+        }
+        await database.put('dataAvailable', true);
+      }
+      return ok;
+    } on ApiException catch (e) {
+      print('Initiate payment error: ${e.message}');
+      return false;
     } catch (e) {
-      print(e);
-    }
-  }
-
-  postData(payload) async {
-    try {
-      final data = await NetworkService.post(
-        'http://127.0.0.1:4000/gate-way/initiate-payment',
-        payload,
-      );
-      return data;
-    } catch (e) {
-      print(e);
+      print('Initiate payment error: $e');
+      return false;
     }
   }
 
@@ -771,98 +586,6 @@ class _PaymentsPageState extends State<PaymentsPage> {
             ],
           ),
         ],
-      ),
-    );
-  }
-
-  Widget paymentOption(
-    String text,
-    bool selected,
-    Color color,
-    IconData icon,
-    int index,
-  ) {
-    return GestureDetector(
-      onTap: () {
-        setState(() {
-          _selectedPaymentMethod = index;
-        });
-      },
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        decoration: BoxDecoration(
-          border: Border.all(
-            color: selected ? color : Colors.grey.shade300,
-            width: 2,
-          ),
-          borderRadius: BorderRadius.circular(14),
-          color: context.isDarkMode
-              ? (selected ? color.withOpacity(0.15) : const Color(0xFF2A2A2A))
-              : Colors.white,
-          boxShadow: selected
-              ? [BoxShadow(color: color.withOpacity(0.2), blurRadius: 6)]
-              : [],
-        ),
-        child: ListTile(
-          leading: index == 0
-              ? Image.asset('assets/mtnSym.png', width: 20, height: 20)
-              : Image.asset('assets/airtelSym.png', width: 20, height: 20),
-          title: Text(
-            text,
-            style: GoogleFonts.poppins(
-              fontWeight: FontWeight.w500,
-              color: context.isDarkMode ? Colors.white : Colors.black87,
-            ),
-          ),
-          trailing: selected ? Icon(Icons.check_circle, color: color) : null,
-        ),
-      ),
-    );
-  }
-
-  Widget transactionTile(
-    BuildContext context,
-    String transactionId,
-    String amount,
-    String method,
-    String date,
-    String status,
-    Color color,
-  ) {
-    return Card(
-      color: context.isDarkMode ? const Color(0xFF2A2A2A) : Colors.white60,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      margin: const EdgeInsets.only(bottom: 12),
-      child: ListTile(
-        leading: const Icon(Icons.receipt_long, color: Colors.brown),
-        title: Text(
-          "$amount - $method",
-          style: GoogleFonts.poppins(
-            fontWeight: FontWeight.w500,
-            fontSize: 12,
-            color: context.isDarkMode ? Colors.white : Colors.black87,
-          ),
-        ),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              "ID: $transactionId",
-              style: GoogleFonts.poppins(color: Colors.grey, fontSize: 12),
-            ),
-            Text(
-              date,
-              style: GoogleFonts.poppins(color: Colors.grey, fontSize: 12),
-            ),
-          ],
-        ),
-        trailing: Chip(
-          label: Text(
-            status,
-            style: const TextStyle(color: Colors.white, fontSize: 10),
-          ),
-          backgroundColor: color,
-        ),
       ),
     );
   }

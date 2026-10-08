@@ -5,7 +5,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:zcanopy/pages/loadIndicator.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:zcanopy/pages/session.dart';
-import 'package:zcanopy/services/api_service.dart';
+import 'package:zcanopy/services/gateway_api.dart';
 import 'package:zcanopy/utils/theme_extensions.dart';
 import 'package:zcanopy/utils/currency.dart';
 
@@ -17,7 +17,7 @@ class SubscriptionPage extends StatefulWidget {
 }
 
 class _SubscriptionPageState extends State<SubscriptionPage> {
-  final _apiService = ApiService();
+  final _api = GatewayApi();
   final database = Hive.box('myStore');
 
   bool _isLoading = true;
@@ -66,8 +66,8 @@ class _SubscriptionPageState extends State<SubscriptionPage> {
 
       // Fetch tiers + current broker subscription in parallel.
       final results = await Future.wait([
-        _apiService.getSubscriptionPackages(),
-        if (userID != null) _apiService.getBroker(userID) else Future.value(<String, dynamic>{}),
+        _api.getSubscriptionPackages(),
+        if (userID != null) _api.getBroker(userID.toString()) else Future.value(<String, dynamic>{}),
       ]);
 
       final packagesRes = results[0];
@@ -882,11 +882,11 @@ class _SubscriptionPageState extends State<SubscriptionPage> {
     );
 
     try {
-      final response = await _apiService.subscribeToPackage(
-        userId: userID,
-        packageId: tier['tier'],
-        paymentMethod: method,
+      final response = await _api.subscribeBroker(
+        brokerId: userID.toString(),
+        tier: tier['tier'].toString(),
         phoneNumber: phoneNumber,
+        paymentMethod: method,
       );
 
       if (mounted) Navigator.pop(context);

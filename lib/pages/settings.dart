@@ -1,8 +1,5 @@
 ﻿import 'package:flutter/material.dart';
-import 'package:zcanopy/pages/welcome.dart';
-import 'package:http/http.dart';
 import 'package:zcanopy/pages/terms.dart';
-import 'package:zcanopy/pages/network.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:zcanopy/theme/theme_controller.dart';
 import 'package:zcanopy/utils/theme_extensions.dart';
@@ -199,16 +196,6 @@ class _SettingsPageState extends State<SettingsPage> {
         if (context.mounted) Navigator.pop(context);
       },
     );
-  }
-
-  postData(payload) async {
-    try {
-      final data = await NetworkService.post(
-          'http://127.0.0.1:4000/gate-way/log-out-user', payload);
-      return data;
-    } catch (e) {
-      print(e);
-    }
   }
 
   Widget _buildSectionHeader(IconData icon, String title) {

@@ -1,12 +1,12 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:zcanopy/pages/welcome.dart';
 import 'package:zcanopy/pages/loadIndicator.dart';
-import 'package:zcanopy/pages/network.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:zcanopy/pages/itemDetails.dart';
 import 'package:zcanopy/pages/session.dart';
 import 'package:zcanopy/utils/currency.dart';
 import 'package:zcanopy/utils/theme_extensions.dart';
-import 'package:zcanopy/services/api_service.dart';
+import 'package:zcanopy/services/gateway_api.dart';
 
 class FavouritePage extends StatefulWidget {
   const FavouritePage({super.key});
@@ -22,29 +22,31 @@ class _FavouritePageState extends State<FavouritePage> {
   final int itemsPerPage = 4;
   List<Map<String, dynamic>> displayedFavourites = [];
   final database = Hive.box('myStore');
-  final _apiService = ApiService();
+  final _api = GatewayApi();
+  int _page = 1;
+  bool _hasMore = true;
   var userID;
 
-  List<Map<String, dynamic>> favourites = [
-    {
-      "id": "PROP001",
-      "houseName": "Luxury Apartment",
-      "location": "Banda, Kampala",
-      "price": 360000,
-      "houseImg": "https://picsum.photos/200/120?random=1",
-      "rating": 4.7,
-      "type": "Apartment",
-    },
-    {
-      "id": "PROP002",
-      "houseName": "Modern Condo",
-      "location": "Kirinya, Kampala",
-      "price": 280000,
-      "houseImg": "https://picsum.photos/200/120?random=2",
-      "rating": 4.2,
-      "type": "Condo",
-    },
-  ];
+  List<Map<String, dynamic>> favourites = [];
+
+  /// Maps a normalised gateway property onto the keys the card renders.
+  Map<String, dynamic> _toCard(Map<String, dynamic> property) {
+    final images = property['images'];
+    final image = images is List && images.isNotEmpty
+        ? images.first.toString()
+        : (property['image'] ?? '').toString();
+    return {
+      ...property,
+      'id': (property['id'] ?? '').toString(),
+      'houseName': (property['name'] ?? property['houseName'] ?? 'Property')
+          .toString(),
+      'location': (property['location'] ?? '').toString(),
+      'price': property['price'] ?? 0,
+      'houseImg': image,
+      'rating': property['rating'] ?? 0,
+      'type': (property['type'] ?? '').toString(),
+    };
+  }
 
   @override
   void initState() {
@@ -56,7 +58,7 @@ class _FavouritePageState extends State<FavouritePage> {
       if (_scrollController.position.pixels >=
               _scrollController.position.maxScrollExtent - 200 &&
           !isLoadingMore &&
-          displayedFavourites.length < favourites.length) {
+          _hasMore) {
         loadMoreData();
       }
     });
@@ -74,100 +76,96 @@ class _FavouritePageState extends State<FavouritePage> {
   }
 
   Future<void> loadInitialData() async {
-     final isSessionValid = await SessionService.validateSession();
+    final isSessionValid = await SessionService.validateSession();
     if (!isSessionValid) {
-      if (mounted) {
-        await forceLogout(context);
-      }
+      if (mounted) await forceLogout(context);
+      return;
     }
 
+    setState(() => isLoading = true);
     try {
-      final data = await _apiService.getFavorites(
-        userId: userID,
-        limit: itemsPerPage,
-      );
-
-      if (data != null && data['success'] == true) {
+      final data = await _api.getFavorites(page: 1, limit: itemsPerPage);
+      final list = _extract(data);
+      if (mounted) {
         setState(() {
-          favourites = List<Map<String, dynamic>>.from(data['favourites'] ?? []);
-          displayedFavourites = favourites.take(itemsPerPage).toList();
+          favourites = list;
+          displayedFavourites = list.take(itemsPerPage).toList();
+          _page = 1;
+          _hasMore = list.length >= itemsPerPage;
           isLoading = false;
-          isLoadingMore = data['isLoadingMore'] ?? false;
         });
-      } else {
-        await Future.delayed(const Duration(seconds: 2));
+      }
+    } on ApiException catch (e) {
+      print('Error loading favorites: ${e.message}');
+      if (mounted) {
         setState(() {
-          displayedFavourites = favourites.take(itemsPerPage).toList();
+          favourites = [];
+          displayedFavourites = [];
           isLoading = false;
+          isLoadingMore = false;
         });
       }
     } catch (e) {
       print('Error loading favorites: $e');
-      await Future.delayed(const Duration(seconds: 2));
-      setState(() {
-        displayedFavourites = favourites.take(itemsPerPage).toList();
-        isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          displayedFavourites = favourites.take(itemsPerPage).toList();
+          isLoading = false;
+          isLoadingMore = false;
+        });
+      }
     }
   }
 
+  List<Map<String, dynamic>> _extract(Map<String, dynamic> data) {
+    final raw = data['favourites'] ?? data['favorites'] ?? data['properties'];
+    if (raw is! List) return [];
+    return raw
+        .whereType<Map>()
+        .map((e) => _toCard(Map<String, dynamic>.from(e)))
+        .toList();
+  }
+
   Future<void> loadMoreData() async {
+    if (!_hasMore || isLoadingMore) return;
     setState(() => isLoadingMore = true);
-
     try {
-      final data = await _apiService.getFavorites(
-        userId: userID,
-        limit: itemsPerPage,
-      );
-
-      if (data != null && data['success'] == true) {
+      final data =
+          await _api.getFavorites(page: _page + 1, limit: itemsPerPage);
+      final list = _extract(data);
+      if (mounted) {
         setState(() {
-          favourites = List<Map<String, dynamic>>.from(data['favourites'] ?? []);
-          final start = displayedFavourites.length;
-          final end = (start + itemsPerPage).clamp(0, favourites.length);
-          displayedFavourites.addAll(favourites.sublist(start, end));
-          isLoadingMore = data['isLoadingMore'] ?? false;
-        });
-      } else {
-        await Future.delayed(const Duration(seconds: 2));
-        setState(() {
-          final start = displayedFavourites.length;
-          final end = (start + itemsPerPage).clamp(0, favourites.length);
-          displayedFavourites.addAll(favourites.sublist(start, end));
+          _page++;
+          favourites.addAll(list);
+          displayedFavourites.addAll(list);
+          _hasMore = list.length >= itemsPerPage;
           isLoadingMore = false;
         });
       }
     } catch (e) {
       print('Error loading more favorites: $e');
-      setState(() {
-        final start = displayedFavourites.length;
-        final end = (start + itemsPerPage).clamp(0, favourites.length);
-        displayedFavourites.addAll(favourites.sublist(start, end));
-        isLoadingMore = false;
-      });
+      if (mounted) setState(() => isLoadingMore = false);
     }
   }
 
   Future<void> _removeFavorite(String propertyId, int index) async {
-    try {
-      final response = await _apiService.removeFromFavorites(
-        userId: userID,
-        propertyId: propertyId,
-      );
-
-      if (response['success'] == true) {
-        setState(() {
-          displayedFavourites.removeAt(index);
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Removed from favorites"),
-            backgroundColor: Colors.green,
-          ),
-        );
+    setState(() {
+      if (index < displayedFavourites.length) {
+        displayedFavourites.removeAt(index);
       }
-    } catch (e) {
-      print('Error removing favorite: $e');
+      favourites.removeWhere((f) => f['id'] == propertyId);
+    });
+    try {
+      await _api.toggleFavorite(propertyId: propertyId);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Removed from favorites"),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } on ApiException catch (e) {
+      print('Error removing favorite: ${e.message}');
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text("Failed to remove from favorites"),
@@ -276,7 +274,13 @@ class _FavouritePageState extends State<FavouritePage> {
         leading: ClipRRect(
           borderRadius: BorderRadius.circular(10),
           child: Image.network(
-            favourite["houseImg"],
+            favourite["houseImg"]?.toString() ?? '',
+            errorBuilder: (_, __, ___) => Container(
+              width: 60,
+              height: 60,
+              color: Colors.grey.shade200,
+              child: const Icon(Icons.home_outlined, color: Colors.grey),
+            ),
             width: 60,
             height: 60,
             fit: BoxFit.cover,
@@ -319,15 +323,16 @@ class _FavouritePageState extends State<FavouritePage> {
         ),
         trailing: IconButton(
           icon: Icon(Icons.favorite, color: Colors.red),
-          onPressed: () {
-            // Remove from favourites
-            setState(() {
-              displayedFavourites.removeAt(index);
-            });
-          },
+          onPressed: () =>
+              _removeFavorite(favourite['id'].toString(), index),
         ),
         onTap: () {
-          // Navigate to item details
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => PropertyDetailsPage(property: favourite),
+            ),
+          );
         },
       ),
     );

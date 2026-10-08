@@ -285,6 +285,7 @@ Future<void> _initializeServices() async {
   await Hive.initFlutter();
   await Hive.openBox('myStore');
   await Hive.openBox('notifications');
+  await Hive.openBox('propertyMonitor');
 
   await MobileAds.instance.initialize();
 

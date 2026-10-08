@@ -1,14 +1,12 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:zcanopy/pages/welcome.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
 import 'package:zcanopy/pages/loadIndicator.dart';
-import 'package:zcanopy/pages/network.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:zcanopy/pages/session.dart';
 import 'package:zcanopy/utils/theme_extensions.dart';
-import 'package:zcanopy/services/api_service.dart';
+import 'package:zcanopy/services/gateway_api.dart';
 import 'package:zcanopy/utils/colors.dart';
+import 'package:zcanopy/utils/property_normalizer.dart';
 
 
 class BookingsPage extends StatefulWidget {
@@ -19,12 +17,13 @@ class BookingsPage extends StatefulWidget {
 }
 
 class _BookingsPageState extends State<BookingsPage> {
-  bool _isLoading = false;
   bool isLoading = false;
   bool isLoadingMore = false;
   bool _isRetrieving = false;
   final database = Hive.box('myStore');
-  final _apiService = ApiService();
+  final _api = GatewayApi();
+  int _page = 1;
+  bool _hasMore = true;
   var userID;
   final ScrollController _scrollController = ScrollController();
   TextEditingController numberEditCtrl = TextEditingController();
@@ -33,89 +32,7 @@ class _BookingsPageState extends State<BookingsPage> {
   String _retrievedCode = '';
   String _retrievedPhone = '';
 
-  List<Map<String, dynamic>> bookings = [
-    {
-      "id": "BK2025001",
-      "date": "2025-08-21 10:30AM",
-      "status": "Pending",
-      "observed": false,
-      "phone": "+256701234567",
-      "houseName": "2-Bedroom Apartment",
-      "houseImg": "https://picsum.photos/200/120?random=3"
-    },
-    {
-      "id": "BK2025002",
-      "date": "2025-08-20 2:15PM",
-      "status": "Approved",
-      "observed": true,
-      "phone": "+256778654321",
-      "houseName": "Luxury Villa",
-      "houseImg": "https://picsum.photos/200/120?random=5"
-    },
-    {
-      "id": "BK2025003",
-      "date": "2025-08-19 9:05AM",
-      "status": "Rejected",
-      "observed": true,
-      "phone": "+256756987654",
-      "houseName": "Studio Apartment",
-      "houseImg": "https://picsum.photos/200/120?random=2"
-    },
-    {
-      "id": "BK2025001",
-      "date": "2025-08-21 10:30AM",
-      "status": "Pending",
-      "observed": false,
-      "phone": "+256701234567",
-      "houseName": "2-Bedroom Apartment",
-      "houseImg": "https://picsum.photos/200/120?random=3"
-    },
-    {
-      "id": "BK2025002",
-      "date": "2025-08-20 2:15PM",
-      "status": "Approved",
-      "observed": true,
-      "phone": "+256778654321",
-      "houseName": "Luxury Villa",
-      "houseImg": "https://picsum.photos/200/120?random=5"
-    },
-    {
-      "id": "BK2025003",
-      "date": "2025-08-19 9:05AM",
-      "status": "Rejected",
-      "observed": true,
-      "phone": "+256756987654",
-      "houseName": "Studio Apartment",
-      "houseImg": "https://picsum.photos/200/120?random=2"
-    },
-    {
-      "id": "BK2025001",
-      "date": "2025-08-21 10:30AM",
-      "status": "Pending",
-      "observed": false,
-      "phone": "+256701234567",
-      "houseName": "2-Bedroom Apartment",
-      "houseImg": "https://picsum.photos/200/120?random=3"
-    },
-    {
-      "id": "BK2025002",
-      "date": "2025-08-20 2:15PM",
-      "status": "Approved",
-      "observed": true,
-      "phone": "+256778654321",
-      "houseName": "Luxury Villa",
-      "houseImg": "https://picsum.photos/200/120?random=5"
-    },
-    {
-      "id": "BK2025003",
-      "date": "2025-08-19 9:05AM",
-      "status": "Rejected",
-      "observed": true,
-      "phone": "+256756987654",
-      "houseName": "Studio Apartment",
-      "houseImg": "https://picsum.photos/200/120?random=2"
-    },
-  ];
+  List<Map<String, dynamic>> bookings = [];
   final int bookingsPerPage = 4;
   List<Map<String, dynamic>> displayedBookings = [];
 
@@ -139,7 +56,7 @@ class _BookingsPageState extends State<BookingsPage> {
       if (_scrollController.position.pixels >=
               _scrollController.position.maxScrollExtent - 200 &&
           !isLoadingMore &&
-          displayedBookings.length < bookings.length) {
+          _hasMore) {
         loadMoreData();
       }
     });
@@ -173,184 +90,142 @@ class _BookingsPageState extends State<BookingsPage> {
     });
 
     try {
-      final data = await _apiService.getCustomerBookingsByCode(
-        code: _retrievedCode,
-        phoneNumber: _retrievedPhone,
+      final data = await _api.retrieveBookingByCode(
+        bookingCode: _retrievedCode,
+        customerPhone: _retrievedPhone,
       );
-
-      if (data['success'] == true) {
-        final fetched =
-            List<Map<String, dynamic>>.from(data['bookings'] ?? []);
+      final fetched = normalizeBookings(data['bookings'] ?? data['data']);
+      if (mounted) {
         setState(() {
           bookings = fetched;
           displayedBookings = fetched.take(bookingsPerPage).toList();
           isLoading = false;
           _isRetrieving = false;
         });
-      } else {
-        // Fall back to the locally stored sample data when the backend has no
-        // records yet (e.g. during development / offline).
+      }
+      if (fetched.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("No bookings found for that code")),
+        );
+      }
+    } on ApiException catch (e) {
+      print('Error retrieving bookings: ${e.message}');
+      if (mounted) {
+        setState(() {
+          bookings = [];
+          displayedBookings = [];
+          isLoading = false;
+          _isRetrieving = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.message)),
+        );
+      }
+    } catch (e) {
+      print('Error retrieving bookings: $e');
+      if (mounted) {
         setState(() {
           displayedBookings = bookings.take(bookingsPerPage).toList();
           isLoading = false;
           _isRetrieving = false;
         });
       }
-    } catch (e) {
-      print('Error retrieving bookings: $e');
-      setState(() {
-        displayedBookings = bookings.take(bookingsPerPage).toList();
-        isLoading = false;
-        _isRetrieving = false;
-      });
     }
   }
 
   Future<void> loadInitialData() async {
     final isSessionValid = await SessionService.validateSession();
     if (!isSessionValid) {
-      if (mounted) {
-        await forceLogout(context);
-      }
+      if (mounted) await forceLogout(context);
+      return;
     }
 
+    setState(() => isLoading = true);
     try {
-      final data = await _apiService.getBookings(
-        userId: userID,
+      final data = await _api.getCustomerBookings(
+        page: 1,
         limit: bookingsPerPage,
       );
-
-      if (data['success'] == true) {
-        setState(() {
-          bookings = List<Map<String, dynamic>>.from(data['bookings'] ?? []);
-          displayedBookings = bookings.take(bookingsPerPage).toList();
-          isLoading = false;
-          isLoadingMore = data['isLoadingMore'] ?? false;
-        });
-      } else {
-        await Future.delayed(const Duration(seconds: 2));
-        setState(() {
-          displayedBookings = bookings.take(bookingsPerPage).toList();
-          isLoading = false;
-        });
-      }
+      final fetched = normalizeBookings(data['bookings']);
+      if (!mounted) return;
+      setState(() {
+        bookings = fetched;
+        displayedBookings = fetched.take(bookingsPerPage).toList();
+        _page = 1;
+        _hasMore = fetched.length >= bookingsPerPage;
+        isLoading = false;
+        isLoadingMore = false;
+      });
+    } on ApiException catch (e) {
+      print('Error loading bookings: ${e.message}');
+      if (!mounted) return;
+      setState(() {
+        bookings = [];
+        displayedBookings = [];
+        isLoading = false;
+        isLoadingMore = false;
+      });
     } catch (e) {
       print('Error loading bookings: $e');
-      await Future.delayed(const Duration(seconds: 2));
+      if (!mounted) return;
       setState(() {
         displayedBookings = bookings.take(bookingsPerPage).toList();
         isLoading = false;
-      });
-    }
-  }
-
-  Future<void> loadMoreData() async {
-    setState(() => isLoadingMore = true);
-
-    try {
-      final data = await _apiService.getBookings(
-        userId: userID,
-        limit: bookingsPerPage,
-      );
-
-      if (data['success'] == true) {
-        setState(() {
-          bookings = List<Map<String, dynamic>>.from(data['bookings'] ?? []);
-          final start = displayedBookings.length;
-          final end = (start + bookingsPerPage).clamp(0, bookings.length);
-          displayedBookings.addAll(bookings.sublist(start, end));
-          isLoadingMore = data['isLoadingMore'] ?? false;
-        });
-      } else {
-        await Future.delayed(const Duration(seconds: 2));
-        setState(() {
-          final start = displayedBookings.length;
-          final end = (start + bookingsPerPage).clamp(0, bookings.length);
-          displayedBookings.addAll(bookings.sublist(start, end));
-          isLoadingMore = false;
-        });
-      }
-    } catch (e) {
-      print('Error loading more bookings: $e');
-      setState(() {
-        final start = displayedBookings.length;
-        final end = (start + bookingsPerPage).clamp(0, bookings.length);
-        displayedBookings.addAll(bookings.sublist(start, end));
         isLoadingMore = false;
       });
     }
   }
 
-  Future<void> _updateBookingStatus(String bookingId, String status) async {
+  Future<void> loadMoreData() async {
+    if (!_hasMore || isLoadingMore) return;
+    setState(() => isLoadingMore = true);
     try {
-      final response = await _apiService.updateBookingStatus(
-        bookingId: bookingId,
-        status: status,
+      final data = await _api.getCustomerBookings(
+        page: _page + 1,
+        limit: bookingsPerPage,
       );
-
-      if (response['success'] == true) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Booking $status")),
-        );
-        loadInitialData();
-      }
-    } catch (e) {
-      print('Error updating booking: $e');
-    }
-  }
-
-/*
-  Future<void> _getBookings() async {
-    if (_isLoading) return;
-    setState(() => _isLoading = true);
-
-    try {
-      final response = await http
-          .get(Uri.parse("https://my-server-url/get-my-bookings/userID=1234"));
-      if (response.statusCode == 200) {
-        var data = json.decode(response.body);
-        if (data.isNotEmpty) {
-          setState(() => bookings = data['items']);
+      final fetched = normalizeBookings(data['bookings']);
+      if (!mounted) return;
+      setState(() {
+        _page++;
+        if (fetched.isNotEmpty) {
+          bookings.addAll(fetched);
+          displayedBookings.addAll(fetched);
         }
-      }
+        _hasMore = fetched.length >= bookingsPerPage;
+        isLoadingMore = false;
+      });
     } catch (e) {
-      debugPrint("Error fetching bookings: $e");
-    } finally {
-      setState(() => _isLoading = false);
-    }
-  }*/
-
-  fetchData(userID, bookingsPerPage) async {
-    if (_isLoading) return;
-    setState(() => _isLoading = true);
-
-    try {
-      final data = await NetworkService.get(
-          'http://127.0.0.1:4000/listings/get-booking-details?id=${userID}&bookingsPerPage=${bookingsPerPage}');
-      return data;
-    } catch (e) {
-      print(e);
-    }
-  }
-
-  postData(payload) async {
-    try {
-      final data = await NetworkService.post(
-          'http://127.0.0.1:4000/gate-way/decline-booking-request', payload);
-      return data;
-    } catch (e) {
-      print(e);
+      print('Error loading more bookings: $e');
+      if (!mounted) return;
+      setState(() => isLoadingMore = false);
     }
   }
 
   void _declineBooking(int index, String id) async {
-    final payload = {"userID": userID, "bookingID": id};
-
-    final response = await postData(payload);
-    if (response.success) {
+    try {
+      await _api.declineBooking(transactionCode: id);
+      if (!mounted) return;
       setState(() {
         bookings[index]["status"] = "Declined";
+        if (index < displayedBookings.length) {
+          displayedBookings[index]["status"] = "Declined";
+        }
       });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Booking declined")),
+      );
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message)),
+      );
+    } catch (e) {
+      print('Decline booking error: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Could not decline booking")),
+      );
     }
   }
 
@@ -553,10 +428,17 @@ class _BookingsPageState extends State<BookingsPage> {
                 ClipRRect(
                   borderRadius: BorderRadius.circular(8),
                   child: Image.network(
-                    booking["houseImg"],
+                    booking["houseImg"]?.toString() ?? '',
                     width: 56,
                     height: 56,
                     fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => Container(
+                      width: 56,
+                      height: 56,
+                      color: Colors.grey.shade200,
+                      child: const Icon(Icons.home_outlined,
+                          color: Colors.grey),
+                    ),
                   ),
                 ),
                 const SizedBox(width: 14),

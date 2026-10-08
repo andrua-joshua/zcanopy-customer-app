@@ -4,9 +4,8 @@ import 'package:intl_phone_field/intl_phone_field.dart';
 import 'package:intl_phone_field/phone_number.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:zcanopy/pages/phoneOTP.dart';
-import 'package:zcanopy/pages/network.dart';
 import 'package:zcanopy/pages/session.dart';
-import 'package:zcanopy/services/api_service.dart';
+import 'package:zcanopy/services/gateway_api.dart';
 import 'package:zcanopy/widgets/themed_page_background.dart';
 import 'package:zcanopy/utils/theme_extensions.dart';
 
@@ -20,7 +19,7 @@ class ProfileFormPage extends StatefulWidget {
 class _ProfileFormPageState extends State<ProfileFormPage> {
   final _formKey = GlobalKey<FormState>();
   final database = Hive.box('myStore');
-  final _apiService = ApiService();
+  final _api = GatewayApi();
   String username = '';
   String email = '';
   String photoURL = '';
@@ -72,7 +71,7 @@ class _ProfileFormPageState extends State<ProfileFormPage> {
       final phone = phoneController.text;
 
       // Update account type
-      final response = await _apiService.updateAccountType(
+      final response = await _api.updateAccountType(
         userId: database.get('userID'),
         accountType: selectedAccountType ?? 'tenant',
         phoneNumber: phone,
@@ -80,13 +79,12 @@ class _ProfileFormPageState extends State<ProfileFormPage> {
 
       if (response['success'] == true) {
         // Save user info
-        await _apiService.saveUserInfo(
+        await _api.saveUserInfo(
           userId: database.get('userID'),
           username: username,
           email: email,
           phoneNumber: phone,
           photoURL: photoURL,
-          accountType: selectedAccountType,
         );
 
         setState(() {
@@ -361,27 +359,9 @@ class _ProfileFormPageState extends State<ProfileFormPage> {
                           borderRadius: BorderRadius.circular(10)),
                       backgroundColor: Color.fromARGB(255, 169, 97, 14),
                     ),
-                    onPressed: () {
-                      if (_formKey.currentState!.validate()) {
-                        // Save profile details
-                        print("userName: ${firstNameController.text}");
-                        print("Email: ${emailController.text}");
-                        print("Phone: ${phoneController.text}");
-                        print("accountType: $selectedAccountType");
-
-                        //  _updateUserProfile();
-                             database.put('phoneNumber', phoneController.text);
-                             database.put('accountType', selectedAccountType);
-
-
-                        Navigator.pushReplacement(
-                            context,
-                            MaterialPageRoute(
-                                builder: (_) => const PhoneOtpScreen(
-                                      phoneNumber: '+256741882818',
-                                      verificationId: '1234',
-                                    )));
-                      }
+                    onPressed: () async {
+                      if (!_formKey.currentState!.validate()) return;
+                      await _updateUserProfile();
                     },
                     child: const Text(
                       "Continue",

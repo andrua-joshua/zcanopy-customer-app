@@ -4,12 +4,10 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
-import 'package:zcanopy/data/sample_catalog.dart';
 import 'package:zcanopy/pages/brokerCollection.dart';
 import 'package:zcanopy/pages/login.dart';
-import 'package:zcanopy/pages/network.dart';
-import 'package:zcanopy/pages/session.dart';
-import 'package:zcanopy/services/api_service.dart';
+import 'package:zcanopy/services/gateway_api.dart';
+import 'package:zcanopy/utils/property_normalizer.dart';
 import 'package:zcanopy/utils/currency.dart';
 import 'package:zcanopy/utils/theme_extensions.dart';
 import 'package:zcanopy/widgets/payment_sheet.dart';
@@ -159,6 +157,7 @@ class _PropData {
   final String brokerName;
   final String brokerPhone;
   final num? brokerRating;
+  final num bookingFee;
 
   const _PropData({
     required this.id,
@@ -178,6 +177,7 @@ class _PropData {
     required this.brokerName,
     required this.brokerPhone,
     required this.brokerRating,
+    required this.bookingFee,
   });
 
   factory _PropData.fromMap(Map<String, dynamic> p,
@@ -194,8 +194,7 @@ class _PropData {
       }
     }
     if (media.isEmpty) {
-      media.add(
-          const _Media.image('https://picsum.photos/1200/700?property', 0));
+      media.add(const _Media.image('', 0));
     }
 
     final extraRaw = p['extraFeatures'];
@@ -236,46 +235,8 @@ class _PropData {
       brokerPhone:
           (p['brokerPhone'] ?? widget.brokerPhone ?? '+256700000000').toString(),
       brokerRating: brokerRating is num ? brokerRating.toDouble() : null,
-    );
-  }
-
-  factory _PropData.fallback(String id, {required PropertyDetailsPage widget}) {
-    var all = _buildVariants(const {});
-    if (all.isEmpty) {
-      all = [
-        const _Variant(
-          name: 'Standard',
-          price: 250000000,
-          images: ['https://picsum.photos/1200/700?fallback'],
-          description:
-              'A beautiful property in a secure gated community. Contact the '
-              'broker to schedule a viewing.',
-          beds: '3',
-          baths: '2',
-          area: '2500 sqft',
-        ),
-      ];
-    }
-    return _PropData(
-      id: id,
-      title: widget.brokerName ?? 'Property',
-      type: 'Apartment',
-      location: 'Kampala',
-      status: 'Available',
-      description: all.first.description,
-      price: all.first.price,
-      rating: widget.brokerRating,
-      ratingCount: 0,
-      mapLocation: null,
-      extraFeatures: const [],
-      variants: all,
-      media: all.first.images.isEmpty
-          ? const []
-          : [for (final i in all.first.images) _Media.image(i, 0)],
-      brokerCode: widget.brokerCode ?? '',
-      brokerName: widget.brokerName ?? 'Broker',
-      brokerPhone: widget.brokerPhone ?? '+256700000000',
-      brokerRating: widget.brokerRating,
+      bookingFee: num.tryParse(p['brokerBookingFee']?.toString() ?? '') ??
+          20000,
     );
   }
 }
@@ -286,6 +247,7 @@ class _PropertyDetailsPageState extends State<PropertyDetailsPage> {
 
   _PropData? _model;
   bool _loading = true;
+  bool _loadFailed = false;
   int _heroPage = 0;
   int _activeVariant = 0;
   bool _revealContact = false;
@@ -329,33 +291,52 @@ class _PropertyDetailsPageState extends State<PropertyDetailsPage> {
     }
     setState(() => _isFavorited = !_isFavorited);
     database.put('savedProperties', list);
+
+    final model = _model;
+    if (model != null) {
+      GatewayApi()
+          .toggleFavorite(
+            propertyId: model.id,
+            propertyTitle: model.title,
+            propertyLocation: model.location,
+            brokerCode: model.brokerCode,
+            imageUrl: model.media.isNotEmpty &&
+                    model.media.first.type == _MediaType.image
+                ? model.media.first.url
+                : '',
+            price: model.price is num ? model.price as num : 0,
+          )
+          .catchError((_) => <String, dynamic>{});
+    }
   }
 
   Future<void> _fetchRemote() async {
-    final session = SessionService.getSessionID();
     try {
-      if (session != null) {
-        final data =
-            await ApiService().getPropertyDetailsForCustomer(
-                  sessionToken: session,
-                  propertyId: widget.itemID,
-                );
-        if (data.isNotEmpty && mounted) {
-          setState(() {
-            _model = _PropData.fromMap(data, widget: widget);
-            _loading = false;
-          });
-          return;
-        }
+      final data = await GatewayApi().getPropertyDetails(
+        propertyId: widget.itemID,
+      );
+      if (data.isNotEmpty && data['id'] != null && mounted) {
+        setState(() {
+          _model = _PropData.fromMap(normalizeProperty(data), widget: widget);
+          _loading = false;
+          _loadFailed = false;
+        });
+        return;
+      }
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _loadFailed = true;
+        });
       }
     } catch (e) {
       print('Fetch property details error: $e');
-    }
-    if (mounted) {
-      setState(() {
-        _model = _PropData.fallback(widget.itemID, widget: widget);
-        _loading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _loadFailed = true;
+        });
+      }
     }
   }
 
@@ -451,7 +432,7 @@ class _PropertyDetailsPageState extends State<PropertyDetailsPage> {
       'type': model.type,
       'location': model.location,
       'price': v.price ?? model.price,
-      'bookingFee': bookingFee,
+      'bookingFee': model.bookingFee,
       'description':
           v.description.isNotEmpty ? v.description : model.description,
       'brokerName': model.brokerName,
@@ -465,19 +446,39 @@ class _PropertyDetailsPageState extends State<PropertyDetailsPage> {
         required String amount,
       }) async {
         try {
-          await NetworkService.post(
-            'http://127.0.0.1:4000/listings/book-property',
-            {
-              'itemID': model.id,
-              'userID': database.get('userID'),
-              'customerEmail': email,
-              'phoneNumber': phone,
-            },
+          final result = await GatewayApi().initiatePropertyAccessPayment(
+            propertyId: model.id,
+            customerPhone: phone,
+            customerEmail: email,
+            amount: model.bookingFee,
+            reason: 'property_access',
+          );
+          final code = result['bookingCode'] ??
+              result['booking_code'] ??
+              result['accessCode'];
+          if (!mounted) return;
+          setState(() => _revealContact = true);
+          if (code != null && code.toString().isNotEmpty) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Booking requested. Code: $code'),
+                duration: const Duration(seconds: 6),
+              ),
+            );
+          }
+        } on ApiException catch (e) {
+          print('Booking request error: ${e.message}');
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(e.message)),
           );
         } catch (e) {
           print('Booking request error: $e');
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Booking failed. Please try again.')),
+          );
         }
-        if (mounted) setState(() => _revealContact = true);
       },
     );
   }
@@ -493,8 +494,40 @@ class _PropertyDetailsPageState extends State<PropertyDetailsPage> {
 
   @override
   Widget build(BuildContext context) {
-    if (_loading || _model == null) {
+    if (_loading) {
       return const Scaffold(body: _DetailsLoader());
+    }
+    if (_model == null) {
+      return Scaffold(
+        appBar: AppBar(),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.cloud_off_outlined,
+                    size: 48, color: Colors.grey),
+                const SizedBox(height: 12),
+                Text(_loadFailed
+                    ? 'Could not load this property.'
+                    : 'Property not found.'),
+                const SizedBox(height: 16),
+                FilledButton(
+                  onPressed: () {
+                    setState(() {
+                      _loading = true;
+                      _loadFailed = false;
+                    });
+                    _fetchRemote();
+                  },
+                  child: const Text('Retry'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
     }
     final model = _model!;
     final v = _variant;
@@ -561,7 +594,7 @@ class _PropertyDetailsPageState extends State<PropertyDetailsPage> {
         ],
       ),
       bottomNavigationBar: _BookingBar(
-        amount: formatUgx(bookingFee),
+        amount: formatUgx(model.bookingFee),
         note: 'Property price: ${formatUgx(v.price ?? model.price)}',
         onBook: _openPaymentDialog,
       ),
@@ -1613,7 +1646,7 @@ class _ReviewsCardState extends State<_ReviewsCard> {
 
   Future<void> _loadComments() async {
     try {
-      final data = await ApiService()
+      final data = await GatewayApi()
           .getPropertyComments(propertyId: widget.propertyId);
       final list = data['comments'] ?? data['data'] ?? [];
       if (list is List && mounted) {
@@ -1876,7 +1909,7 @@ class _BookingBar extends StatelessWidget {
 // Similar properties
 // ---------------------------------------------------------------------------
 
-class _SimilarProperties extends StatelessWidget {
+class _SimilarProperties extends StatefulWidget {
   final String currentId;
   final String currentType;
 
@@ -1886,8 +1919,51 @@ class _SimilarProperties extends StatelessWidget {
   });
 
   @override
+  State<_SimilarProperties> createState() => _SimilarPropertiesState();
+}
+
+class _SimilarPropertiesState extends State<_SimilarProperties> {
+  List<Map<String, dynamic>> _similar = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final res = await GatewayApi().searchProperties(
+        query: '',
+        page: 1,
+        limit: 12,
+      );
+      final raw = res['properties'];
+      final list = raw is List
+          ? raw
+              .whereType<Map>()
+              .map((e) => Map<String, dynamic>.from(e))
+              .where((p) => p['id']?.toString() != widget.currentId)
+              .toList()
+          : <Map<String, dynamic>>[];
+      final current = widget.currentType.toLowerCase();
+      final same = list
+          .where((p) => p['type']?.toString().toLowerCase() == current)
+          .toList();
+      final others = list.where((p) => !same.contains(p)).toList();
+      if (mounted) {
+        setState(() {
+          _similar = (same + others).take(6).toList();
+        });
+      }
+    } catch (e) {
+      debugPrint('Similar properties fetch failed: $e');
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final similar = _buildSimilarList();
+    final similar = _similar;
     if (similar.isEmpty) return const SizedBox.shrink();
 
     return Padding(
@@ -1939,20 +2015,6 @@ class _SimilarProperties extends StatelessWidget {
     );
   }
 
-  List<Map<String, dynamic>> _buildSimilarList() {
-    final catalog = kSampleProperties
-        .where((p) => p['id']?.toString() != currentId)
-        .toList();
-    if (catalog.isEmpty) return catalog;
-    final sameType = catalog
-        .where((p) =>
-            (p['type']?.toString() ?? '').toLowerCase() ==
-            currentType.toLowerCase())
-        .toList();
-    final others =
-        catalog.where((p) => !sameType.contains(p)).toList();
-    return (sameType + others).take(8).toList();
-  }
 }
 
 // ---------------------------------------------------------------------------
