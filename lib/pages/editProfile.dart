@@ -1,81 +1,96 @@
-﻿import 'package:flutter/material.dart';
-import 'package:zcanopy/pages/welcome.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:hive_flutter/hive_flutter.dart';
+import 'package:zcanopy/services/auth_service.dart';
 import 'package:zcanopy/services/gateway_api.dart';
-import 'package:zcanopy/widgets/themed_page_background.dart';
 import 'package:zcanopy/utils/theme_extensions.dart';
+import 'package:zcanopy/widgets/themed_page_background.dart';
 
 class ProfilePageEdit extends StatefulWidget {
   const ProfilePageEdit({super.key});
 
   @override
-  State<ProfilePageEdit> createState() => _ProfilePageState();
+  State<ProfilePageEdit> createState() => _ProfilePageEditState();
 }
 
-class _ProfilePageState extends State<ProfilePageEdit> {
+class _ProfilePageEditState extends State<ProfilePageEdit> {
+  final _phoneCtrl = TextEditingController();
+  final _api = GatewayApi();
 
-  DateTime dateOfBirth = DateTime(1990, 1, 1);
-  final database = Hive.box("myStore");
-
-    // Sample user data - in a real app this would come from a provider or API
-  String fullName ="kevin Delos";
-  String userName = "delos";
-  String accountType = "tenant";
-  String email = "tezoschain@gmail.com.com";
-  String phone = "0741882818";
-  String ninNumber = "NIN1234567890";
-  String country = "Uganda";
-
-  bool isDeleting = false;
-  bool isUserInDB = false;
-
-  // Controller for phone number editing
-  late TextEditingController _phoneController;
+  bool _saving = false;
 
   @override
   void initState() {
     super.initState();
-    _phoneController = TextEditingController(text: phone);
-    isUserInDB = database.get('userID') != null ? true : false;
-
-    if (!isUserInDB) {
-  
-    } else {
-      //fullName = database.get('fullName');
-      userName = database.get('username');
-      accountType = database.get('accountType');
-      email = database.get('email');
-      phone = database.get('phoneNumber');
-     // country = database.get('country');
-    }
-  }
-
-   Future<void> forceLogout(BuildContext context) async {
-    await database.clear();
-    await database.clear();
-
-    Navigator.pushAndRemoveUntil(
-      context,
-      MaterialPageRoute(builder: (_) => const OnBoardingScreen()),
-      (_) => false,
-    );
+    _phoneCtrl.text = AuthService.instance.phoneNumber ?? '';
   }
 
   @override
   void dispose() {
-    _phoneController.dispose();
+    _phoneCtrl.dispose();
     super.dispose();
+  }
+
+  String _normalizedPhone(String value) {
+    var digits = value.replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.length == 9) digits = '256$digits';
+    if (digits.length == 10 && digits.startsWith('0')) {
+      digits = '256${digits.substring(1)}';
+    }
+    return digits;
+  }
+
+  Future<void> _save() async {
+    final phone = _normalizedPhone(_phoneCtrl.text);
+    if (phone.length < 12) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Enter a valid phone number, e.g. 0700 000 000'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+    setState(() => _saving = true);
+    try {
+      await _api.updateCustomerPhone(phone);
+      await AuthService.instance.refreshProfile();
+      if (!mounted) return;
+      _phoneCtrl.text = AuthService.instance.phoneNumber ?? phone;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Phone number updated'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message), backgroundColor: Colors.red),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not update your phone number'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-   String?  photoUrl=database.get('photoURL')!=null ? database.get('photoURL') :'none';
+    final signedIn = AuthService.instance.isSignedIn;
+    final name = AuthService.instance.displayName;
+    final email = AuthService.instance.email ?? '';
 
-     return Scaffold(
+    return Scaffold(
       appBar: AppBar(
         title: Text(
-          "Profile",
+          'Account details',
           style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
         ),
         backgroundColor: context.appPrimaryBrown,
@@ -84,238 +99,116 @@ class _ProfilePageState extends State<ProfilePageEdit> {
       body: ThemedPageBackground(
         lightOverlay: true,
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(2),
+          padding: const EdgeInsets.all(16),
           child: Column(
             children: [
-            // Profile Avatar with edit button
-            Stack(
-              alignment: Alignment.bottomRight,
-              children: [
-                            CircleAvatar(
-      radius: 60,
-      backgroundColor: Colors.grey.shade400,
-      backgroundImage: photoUrl != null && photoUrl.isNotEmpty
-          ? NetworkImage(photoUrl) // Load from Firebase URL
-          : null, // No image available
-      child: (photoUrl == null || photoUrl.isEmpty)
-          ? Icon(Icons.person, size: 60, color: Colors.white) // fallback
-          : null,
-    ),
-                CircleAvatar(
-                  radius: 16,
-                  backgroundColor: Colors.brown,
-                  child: const Icon(Icons.edit, color: Colors.white, size: 16),
+              const SizedBox(height: 8),
+              CircleAvatar(
+                radius: 48,
+                backgroundColor: Colors.grey.shade300,
+                child: const Icon(Icons.person, size: 52, color: Colors.white),
+              ),
+              const SizedBox(height: 16),
+              if (!signedIn)
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Text(
+                    'You are browsing as a guest. Sign in to manage your account details.',
+                    textAlign: TextAlign.center,
+                  ),
+                )
+              else ...[
+                _readOnly('Name', name),
+                const SizedBox(height: 12),
+                _readOnly('Email', email),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _phoneCtrl,
+                  keyboardType: TextInputType.phone,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.digitsOnly,
+                    LengthLimitingTextInputFormatter(12),
+                  ],
+                  decoration: InputDecoration(
+                    labelText: 'Phone number',
+                    hintText: '0700 000 000',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'A phone number is needed so brokers can reach you about a booking.',
+                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: _saving ? null : _save,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: context.appPrimaryBrown,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(24),
+                      ),
+                    ),
+                    child: _saving
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Text('Save changes'),
+                  ),
                 ),
               ],
-            ),
-            const SizedBox(height: 20),
-
-            // User information summary (read-only)
-         //   _buildReadOnlyField("Full Name", fullName),
-        //    const SizedBox(height: 2),
-            _buildReadOnlyField("User Name", userName),
-            const SizedBox(height: 2),
-            _buildReadOnlyField("Account Type", accountType),
-            const SizedBox(height: 2),
-            _buildReadOnlyField("Email", email),
-            const SizedBox(height: 2),
-            // Phone number (editable)
-           _buildReadOnlyField("Phone Number", phone),
-         //   _buildEditablePhoneField(),
-            const SizedBox(height: 2),
-            _buildReadOnlyField("Country", country),
-            //    _buildReadOnlyField("Date of Birth", "${dateOfBirth.day}/${dateOfBirth.month}/${dateOfBirth.year}"),
-
-            const SizedBox(height: 30),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red, // Changed to red for delete
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 40, vertical: 14),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
-              ),
-              onPressed: _confirmDeleteAccount,
-              child: Text("Delete Account",
-                  style: GoogleFonts.poppins(
-                      fontSize: 16,
-                      color: Colors.white,
-                      fontWeight: FontWeight.w600)),
-            ),
-           ],
+            ],
+          ),
         ),
       ),
-    ));
-  }
-
-  Widget _buildReadOnlyField(String label, String value) {
-    return Container(
-        color: context.appCardColor,
-        child: Padding(
-          padding: const EdgeInsets.only(bottom: 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                label,
-                style: TextStyle(
-                  fontWeight: FontWeight.w500,
-                  fontSize: 16,
-                  color: context.appPrimaryBrown,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  border: Border.all(color: context.appDividerColor),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  value,
-                  style: const TextStyle(fontSize: 16),
-                ),
-              ),
-            ],
-          ),
-        ));
-  }
-
-  Widget _buildEditablePhoneField() {
-    return Container(
-        color: context.appCardColor,
-        child: Padding(
-          padding: const EdgeInsets.only(bottom: 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                "Phone Number",
-                style: TextStyle(
-                  fontWeight: FontWeight.w500,
-                  fontSize: 16,
-                  color: Colors.brown,
-                ),
-              ),
-              const SizedBox(height: 4),
-              TextField(
-                controller: _phoneController,
-                keyboardType: TextInputType.phone,
-                decoration: InputDecoration(
-                  contentPadding: const EdgeInsets.all(12),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: Colors.brown),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: Colors.brown, width: 2),
-                  ),
-                ),
-                onChanged: (value) {
-                  setState(() {
-                    phone = value;
-                  });
-                },
-              ),
-            ],
-          ),
-        ));
-  }
-
-  void _confirmDeleteAccount() {
-
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(5.0),
-          ),
-          backgroundColor: Colors.black87,
-          title: const Text("Delete Account",
-              style: TextStyle(color: Colors.white)),
-          content: const Text(
-              "Are you sure you want to delete your account? This action cannot be undone.",
-              style: TextStyle(color: Colors.white)),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop(); // Close dialog
-              },
-              child:
-                  const Text("Cancel", style: TextStyle(color: Colors.white)),
-            ),
-            TextButton(
-              onPressed: () async {
-                Navigator.of(context).pop(); // Close dialog
-                final deleted = await _deleteAccount();
-                if (!deleted) return;
-                await database.clear();
-                if (!mounted) return;
-                Navigator.pushAndRemoveUntil(
-                  context,
-                  MaterialPageRoute(
-                      builder: (_) => const OnBoardingScreen()),
-                  (route) => false,
-                );
-              },
-              child: const Text("Delete", style: TextStyle(color: Colors.red)),
-            ),
-          ],
-        );
-      },
     );
   }
 
-  /// Requests a one-time deletion code and then deletes the account on the
-  /// gateway. Returns true when the account was deleted.
-  Future<bool> _deleteAccount() async {
-    final userId = database.get('userID')?.toString() ?? '';
-    if (userId.isEmpty) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("No account to delete on this device")),
-        );
-      }
-      return false;
-    }
-
-    if (mounted) setState(() => isDeleting = true);
-    try {
-      await GatewayApi().requestAccountDeletionOtp(userId: userId);
-      final response = await GatewayApi().deleteUserAccount(userId: userId);
-      final ok = response['success'] == true || response['error'] == null;
-      if (mounted) {
-        setState(() => isDeleting = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(ok
-                ? "Account deleted successfully"
-                : (response['message']?.toString() ?? "Account deletion failed")),
-            backgroundColor: Colors.red,
+  Widget _readOnly(String label, String value) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: context.appCardColor,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: context.appDividerColor),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: context.appPrimaryBrown,
+            ),
           ),
-        );
-      }
-      return ok;
-    } on ApiException catch (e) {
-      if (mounted) {
-        setState(() => isDeleting = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.message)),
-        );
-      }
-      return false;
-    } catch (e) {
-      print('Delete account error: $e');
-      if (mounted) {
-        setState(() => isDeleting = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Could not delete account")),
-        );
-      }
-      return false;
-    }
+          const SizedBox(height: 4),
+          Text(
+            value.isEmpty ? '—' : value,
+            style: const TextStyle(fontSize: 15),
+          ),
+        ],
+      ),
+    );
   }
 }

@@ -2,6 +2,8 @@
 import 'package:zcanopy/pages/terms.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:zcanopy/theme/theme_controller.dart';
+import 'package:zcanopy/services/auth_service.dart';
+import 'package:zcanopy/utils/auth_gate.dart';
 import 'package:zcanopy/utils/theme_extensions.dart';
 
 class SettingsPage extends StatefulWidget {
@@ -17,8 +19,18 @@ class _SettingsPageState extends State<SettingsPage> {
   bool opportunity = false;
   final database = Hive.box('myStore');
 
+  Future<void> _signOut() async {
+    await AuthService.instance.signOut();
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _signIn() async {
+    if (await ensureSignedIn(context) && mounted) setState(() {});
+  }
+
   @override
   Widget build(BuildContext context) {
+    final signedIn = AuthService.instance.isSignedIn;
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(
@@ -46,6 +58,25 @@ class _SettingsPageState extends State<SettingsPage> {
 
           _buildSectionHeader(Icons.person_outline, "Account"),
           _buildDividerList([
+            if (signedIn)
+              ListTile(
+                title: const Text("Signed in as",
+                    style: TextStyle(fontSize: 15)),
+                subtitle: Text(
+                  AuthService.instance.email ??
+                      AuthService.instance.displayName,
+                ),
+              ),
+            _buildNavigationItem(
+              signedIn ? "Sign out" : "Sign in or create account",
+              onTap: () {
+                if (signedIn) {
+                  _confirmSignOut();
+                } else {
+                  _signIn();
+                }
+              },
+            ),
             _buildNavigationItem("Terms of agreement", onTap: () {
               Navigator.push(
                 context,
@@ -122,6 +153,30 @@ class _SettingsPageState extends State<SettingsPage> {
         ],
       ),
     );
+  }
+
+  Future<void> _confirmSignOut() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Sign out?"),
+        content: const Text(
+          "You can keep browsing as a guest. Sign in again to access your "
+          "saved properties, bookings and payments.",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text("Cancel"),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text("Sign out"),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) await _signOut();
   }
 
   String _themeModeLabel(ThemeMode mode) {

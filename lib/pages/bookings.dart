@@ -2,7 +2,7 @@
 import 'package:zcanopy/pages/welcome.dart';
 import 'package:zcanopy/pages/loadIndicator.dart';
 import 'package:hive_flutter/hive_flutter.dart';
-import 'package:zcanopy/pages/session.dart';
+import 'package:zcanopy/services/auth_service.dart';
 import 'package:zcanopy/utils/theme_extensions.dart';
 import 'package:zcanopy/services/gateway_api.dart';
 import 'package:zcanopy/utils/colors.dart';
@@ -47,7 +47,7 @@ class _BookingsPageState extends State<BookingsPage> {
     final storedPhone = _phoneCtrl.text;
     if (storedCode.isNotEmpty && storedPhone.isNotEmpty) {
       _retrieveBookings(storedCode, storedPhone);
-    } else {
+    } else if (AuthService.instance.isSignedIn) {
       loadInitialData();
     }
     userID = database.get('userID');
@@ -94,7 +94,10 @@ class _BookingsPageState extends State<BookingsPage> {
         bookingCode: _retrievedCode,
         customerPhone: _retrievedPhone,
       );
-      final fetched = normalizeBookings(data['bookings'] ?? data['data']);
+      final listed = data['bookings'] is List && (data['bookings'] as List).isNotEmpty
+          ? data['bookings']
+          : (data['booking'] != null ? [data['booking']] : data['data']);
+      final fetched = normalizeBookings(listed);
       if (mounted) {
         setState(() {
           bookings = fetched;
@@ -134,9 +137,8 @@ class _BookingsPageState extends State<BookingsPage> {
   }
 
   Future<void> loadInitialData() async {
-    final isSessionValid = await SessionService.validateSession();
-    if (!isSessionValid) {
-      if (mounted) await forceLogout(context);
+    if (!AuthService.instance.isSignedIn) {
+      if (mounted) setState(() => isLoading = false);
       return;
     }
 
@@ -257,13 +259,20 @@ class _BookingsPageState extends State<BookingsPage> {
           IconButton(
             icon: const Icon(Icons.refresh, color: Colors.white),
             onPressed: () async {
+              if (!AuthService.instance.isSignedIn) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                        'Sign in to sync bookings, or use your booking code above.'),
+                  ),
+                );
+                return;
+              }
               setState(() {
                 isLoading = false;
                 displayedBookings = [];
               });
-              await Future.delayed(const Duration(seconds: 2));
-           //   _getBookings();
-              loadInitialData();
+              await loadInitialData();
             },
           ),
         ],
@@ -613,7 +622,9 @@ class _BookingsPageState extends State<BookingsPage> {
           ),
           const SizedBox(height: 10),
           Text(
-            "You’ll see your booking requests here",
+            AuthService.instance.isSignedIn
+                ? "You’ll see your booking requests here"
+                : "Use your booking code above, or sign in to sync your bookings.",
             style: TextStyle(
               fontSize: 14,
               color: Colors.grey[500],

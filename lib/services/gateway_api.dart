@@ -28,6 +28,17 @@ class GatewayApi {
 
   String? get sessionToken => ApiConfig.sessionToken;
 
+  bool get hasCustomerAccount => _store.get('isCustomerLoggedIn') == true;
+
+  Future<void> _clearCustomerAccount() async {
+    await _store.put('isCustomerLoggedIn', false);
+    await _store.delete('customerId');
+    await _store.delete('customerEmail');
+    await _store.delete('customerFirstName');
+    await _store.delete('customerLastName');
+    await _store.delete('customerPhone');
+  }
+
   // ==================== TRANSPORT ====================
 
   Future<Map<String, dynamic>> _send(
@@ -56,6 +67,7 @@ class GatewayApi {
     }
 
     if (response.statusCode == 401 && retryOnUnauthorized) {
+      if (hasCustomerAccount) await _clearCustomerAccount();
       final fresh = await ensureCustomerSession(force: true);
       if (fresh != null) {
         return _send(method, uri,
@@ -250,6 +262,7 @@ class GatewayApi {
       return true;
     }
 
+    if (hasCustomerAccount) await _clearCustomerAccount();
     final fresh = await ensureCustomerSession(force: true);
     return fresh != null && fresh.isNotEmpty;
   }
@@ -285,6 +298,104 @@ class GatewayApi {
     await _store.delete('sessionUuid');
   }
 
+  // ==================== CUSTOMER AUTH ====================
+
+  Future<Map<String, dynamic>> loginCustomer({
+    required String email,
+    required String password,
+  }) {
+    return _send(
+      'POST',
+      Endpoints.uri(Endpoints.customerLogin),
+      body: {'email': email.trim(), 'password': password},
+      retryOnUnauthorized: false,
+    );
+  }
+
+  Future<Map<String, dynamic>> registerCustomer({
+    required String email,
+    required String password,
+    String? firstName,
+    String? lastName,
+    String? phoneNumber,
+  }) {
+    return _send(
+      'POST',
+      Endpoints.uri(Endpoints.customerRegister),
+      body: {
+        'email': email.trim(),
+        'password': password,
+        if (firstName != null && firstName.isNotEmpty) 'firstName': firstName,
+        if (lastName != null && lastName.isNotEmpty) 'lastName': lastName,
+        if (phoneNumber != null && phoneNumber.isNotEmpty)
+          'phoneNumber': phoneNumber,
+      },
+      retryOnUnauthorized: false,
+    );
+  }
+
+  Future<Map<String, dynamic>> confirmCustomerOtp({
+    required String email,
+    required String otpCode,
+  }) {
+    return _send(
+      'POST',
+      Endpoints.uri(Endpoints.customerConfirmOtp),
+      body: {'email': email.trim(), 'otpCode': otpCode.trim()},
+      retryOnUnauthorized: false,
+    );
+  }
+
+  Future<Map<String, dynamic>> getCustomerProfile() {
+    return _send('GET', Endpoints.uri(Endpoints.customerProfile));
+  }
+
+  Future<Map<String, dynamic>> updateCustomerPhone(String phoneNumber) {
+    return _put(Endpoints.uri(Endpoints.customerPhone),
+        body: {'phoneNumber': phoneNumber});
+  }
+
+  Future<Map<String, dynamic>> logoutCustomer() {
+    return _send(
+      'POST',
+      Endpoints.uri(Endpoints.customerLogout),
+      retryOnUnauthorized: false,
+    );
+  }
+
+  Future<Map<String, dynamic>> sendForgotPasswordOtp(String email) {
+    return _send(
+      'POST',
+      Endpoints.uri(Endpoints.forgotPasswordSend),
+      body: {'email': email.trim()},
+      retryOnUnauthorized: false,
+    );
+  }
+
+  Future<Map<String, dynamic>> verifyForgotPasswordOtp({
+    required String email,
+    required String otp,
+  }) {
+    return _send(
+      'POST',
+      Endpoints.uri(Endpoints.forgotPasswordVerify),
+      body: {'email': email.trim(), 'otp': otp.trim()},
+      retryOnUnauthorized: false,
+    );
+  }
+
+  Future<Map<String, dynamic>> resetCustomerPassword({
+    required String email,
+    required String password,
+  }) {
+    return _send(
+      'POST',
+      Endpoints.uri(Endpoints.forgotPasswordReset),
+      body: {'email': email.trim(), 'password': password},
+      retryOnUnauthorized: false,
+    );
+  }
+
   // ==================== PROPERTIES ====================
 
   Future<Map<String, dynamic>> getCustomerProperties({
@@ -303,6 +414,19 @@ class GatewayApi {
       'radiusKm': radiusKm,
       'propertyType': propertyType,
     }));
+  }
+
+  Future<Map<String, dynamic>> getVideoTours({
+    int page = 1,
+    int limit = 12,
+    String? propertyType,
+  }) async {
+    final data = await _send('GET', Endpoints.uri(Endpoints.customerVideoTours, {
+      'page': page,
+      'limit': limit,
+      'propertyType': propertyType,
+    }));
+    return _withProperties(data);
   }
 
   Future<Map<String, dynamic>> getPropertyDetails({required String propertyId}) {
@@ -636,7 +760,11 @@ class GatewayApi {
     int limit = 20,
   }) {
     return _send(
-        'GET', Endpoints.uri(Endpoints.transactions, {'page': page, 'limit': limit}));
+        'GET',
+        Endpoints.uri(
+          Endpoints.customerTransactions,
+          {'page': page, 'limit': limit},
+        ));
   }
 
   Future<Map<String, dynamic>> getTransactionRecords({
@@ -701,13 +829,8 @@ class GatewayApi {
     String? phoneNumber,
   }) {
     return _send(
-      'POST',
-      Endpoints.uri(Endpoints.paymentsRetrieve),
-      body: {
-        'code': code,
-        if (phoneNumber != null && phoneNumber.isNotEmpty)
-          'phoneNumber': phoneNumber,
-      },
+      'GET',
+      Endpoints.uri('${Endpoints.bookingsByCode}/${Uri.encodeComponent(code)}'),
     );
   }
 
@@ -716,35 +839,11 @@ class GatewayApi {
   Future<Map<String, dynamic>> getNotifications({
     int page = 1,
     int limit = 50,
-    String? brokerCode,
-    String? type,
-    bool? read,
   }) {
-    return _send('GET', Endpoints.uri(Endpoints.notifications, {
-      'sessionToken': sessionToken,
-      'brokerCode': brokerCode,
+    return _send('GET', Endpoints.uri(Endpoints.customerNotifications, {
       'page': page,
       'limit': limit,
-      'type': type,
-      'read': read == null ? null : read.toString(),
     }));
-  }
-
-  Future<Map<String, dynamic>> markNotificationsRead({
-    String? id,
-    List<String>? ids,
-    bool all = false,
-  }) {
-    return _send(
-      'POST',
-      Endpoints.uri(Endpoints.markNotificationsRead),
-      body: {
-        'sessionToken': sessionToken,
-        if (id != null) 'id': id,
-        if (ids != null && ids.isNotEmpty) 'ids': ids,
-        'all': all,
-      },
-    );
   }
 
   // ==================== SUBSCRIPTIONS ====================
@@ -797,43 +896,6 @@ class GatewayApi {
         if (sessionId != null) 'sessionId': sessionId,
       },
     );
-  }
-
-  // ==================== PHONE OTP / ACCOUNT TYPE ====================
-
-  Future<Map<String, dynamic>> requestPhoneOTP({required String userId}) {
-    return _send('POST', Endpoints.uri('/auth/get-phone-verification-code'),
-        body: {'userID': userId});
-  }
-
-  Future<Map<String, dynamic>> verifyPhoneOTP({
-    required String verificationId,
-    required String userId,
-    required String code,
-  }) {
-    return _send('POST', Endpoints.uri('/gate-way/verify-phone-otp'),
-        body: {'verificationID': verificationId, 'userID': userId, 'code': code});
-  }
-
-  Future<Map<String, dynamic>> resendPhoneOTP({
-    required String verificationId,
-    required String userId,
-  }) {
-    return _send('POST', Endpoints.uri('/gate-way/resend-phone-otp'),
-        body: {'verificationID': verificationId, 'userID': userId});
-  }
-
-  Future<Map<String, dynamic>> updateAccountType({
-    required String userId,
-    required String accountType,
-    String? phoneNumber,
-  }) {
-    return _send('POST', Endpoints.uri('/auth/update-account-type'),
-        body: {
-          'userId': userId,
-          'accountType': accountType,
-          if (phoneNumber != null) 'phoneNumber': phoneNumber,
-        });
   }
 
   Future<Map<String, dynamic>> getBroker(String brokerId) {

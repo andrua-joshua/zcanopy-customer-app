@@ -38,9 +38,10 @@ class _BrokerCollectionPageState extends State<BrokerCollectionPage> {
   @override
   void initState() {
     super.initState();
-    _savedProperties.addAll((Hive.box('myStore')
-            .get('savedProperties', defaultValue: []) as List)
-        .map((e) => e.toString()));
+    _savedProperties.addAll(
+      (Hive.box('myStore').get('savedProperties', defaultValue: []) as List)
+          .map((e) => e.toString()),
+    );
     _load();
   }
 
@@ -54,7 +55,10 @@ class _BrokerCollectionPageState extends State<BrokerCollectionPage> {
       );
       final raw = res['properties'];
       final list = raw is List
-          ? raw.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList()
+          ? raw
+                .whereType<Map>()
+                .map((e) => Map<String, dynamic>.from(e))
+                .toList()
           : <Map<String, dynamic>>[];
       _applyBrokerMeta(list);
       if (mounted) {
@@ -114,25 +118,25 @@ class _BrokerCollectionPageState extends State<BrokerCollectionPage> {
   void _openVideoTour(Map<String, dynamic> property) {
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) => VideoTourPlayer(property: property),
-      ),
+      MaterialPageRoute(builder: (_) => VideoTourPlayer(property: property)),
     );
   }
 
   List<Map<String, dynamic>> get _videoTours => _properties
-      .where((p) =>
-          p['video'] != null && p['video'].toString().isNotEmpty)
-      .map((p) => {
-            'videoUrl': p['video'],
-            'title': p['name']?.toString() ?? 'Property tour',
-            'location': p['location']?.toString() ?? '',
-            'subCounty': p['subCounty']?.toString() ?? '',
-            'district': p['district']?.toString() ?? '',
-            'brokerCode': widget.brokerCode,
-            'brokerName': widget.brokerName,
-            'brokerPhone': widget.brokerPhone,
-          })
+      .where((p) => p['video'] != null && p['video'].toString().isNotEmpty)
+      .map(
+        (p) => {
+          'id': p['id']?.toString() ?? '',
+          'videoUrl': p['video'],
+          'title': p['name']?.toString() ?? 'Property tour',
+          'location': p['location']?.toString() ?? '',
+          'subCounty': p['subCounty']?.toString() ?? '',
+          'district': p['district']?.toString() ?? '',
+          'brokerCode': widget.brokerCode,
+          'brokerName': widget.brokerName,
+          'brokerPhone': widget.brokerPhone,
+        },
+      )
       .toList();
 
   void _openVideoTours() {
@@ -252,14 +256,18 @@ class _BrokerCollectionPageState extends State<BrokerCollectionPage> {
                       ? Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Icon(Icons.cloud_off,
-                                size: 40, color: Colors.grey),
+                            const Icon(
+                              Icons.cloud_off,
+                              size: 40,
+                              color: Colors.grey,
+                            ),
                             const SizedBox(height: 8),
                             Text(
                               "Couldn't load properties. Check your connection.",
                               textAlign: TextAlign.center,
-                              style:
-                                  TextStyle(color: context.appMutedTextColor),
+                              style: TextStyle(
+                                color: context.appMutedTextColor,
+                              ),
                             ),
                             const SizedBox(height: 12),
                             ElevatedButton(
@@ -384,15 +392,21 @@ class _BrokerHeader extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(width: 4),
-                        const Icon(Icons.verified,
-                            color: Color(0xFF1B9E48), size: 18),
+                        const Icon(
+                          Icons.verified,
+                          color: Color(0xFF1B9E48),
+                          size: 18,
+                        ),
                       ],
                     ),
                     const SizedBox(height: 4),
                     Row(
                       children: [
-                        const Icon(Icons.pin_drop_outlined,
-                            size: 15, color: _primary),
+                        const Icon(
+                          Icons.pin_drop_outlined,
+                          size: 15,
+                          color: _primary,
+                        ),
                         const SizedBox(width: 4),
                         Text(
                           '$listingCount listings available',

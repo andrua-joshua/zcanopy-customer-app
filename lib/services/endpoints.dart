@@ -4,6 +4,19 @@ class Endpoints {
   Endpoints._();
 
   static const String customerSession = '/customer/session';
+  static const String customerLogin = '/web/customer/login';
+  static const String customerRegister = '/web/customer/register';
+  static const String customerConfirmOtp = '/web/customer/confirm-otp';
+  static const String customerProfile = '/web/customer/profile';
+  static const String customerPhone = '/web/customer/profile/phone';
+  static const String customerLogout = '/web/customer/logout';
+  static const String customerVideoTours = '/web/customer/video-tours';
+  static const String customerNotifications = '/web/customer/notifications';
+  static const String customerTransactions = '/web/customer/transactions';
+  static const String forgotPasswordSend = '/customer/forgot-password/otp/send';
+  static const String forgotPasswordVerify =
+      '/customer/forgot-password/otp/verify';
+  static const String forgotPasswordReset = '/customer/forgot-password/reset';
   static const String validateSession = '/gate-way/validate-session';
   static const String checkSessionValidity =
       '/gate-way/check-session-id-validity';

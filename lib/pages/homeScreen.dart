@@ -3,7 +3,6 @@
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 import 'package:motion_tab_bar_v2/motion-tab-bar.dart';
-import 'package:zcanopy/pages/welcome.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:zcanopy/pages/userProfile.dart';
 import 'package:zcanopy/pages/explorer.dart';
@@ -14,6 +13,7 @@ import 'package:zcanopy/pages/notifications.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:zcanopy/utils/currency.dart';
 import 'package:zcanopy/pages/session.dart';
+import 'package:zcanopy/utils/auth_gate.dart';
 import 'package:zcanopy/widgets/tiktok_video_reel.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -46,18 +46,49 @@ class _HomePageState extends State<HomeScreen> {
   bool _loadFailed = false;
 
   List<Map<String, dynamic>> displayedProperties = [];
+  List<Map<String, dynamic>> _videoTours = [];
   List<Map<String, dynamic>> reels = [];
   final Set<String> _savedProperties = {};
 
-  void _toggleSaveProperty(String id) {
+  Future<void> _toggleSaveProperty(Map<String, dynamic> property) async {
+    if (!await ensureSignedIn(context)) return;
+    if (!mounted) return;
+    final id = property['id']?.toString() ?? '';
+    if (id.isEmpty) return;
     final prefs = Hive.box('myStore');
-    if (_savedProperties.contains(id)) {
+    final wasSaved = _savedProperties.contains(id);
+    if (wasSaved) {
       _savedProperties.remove(id);
     } else {
       _savedProperties.add(id);
     }
     prefs.put('savedProperties', _savedProperties.toList());
     setState(() {});
+    try {
+      await _apiService.toggleFavorite(
+        propertyId: id,
+        propertyTitle: property['name']?.toString(),
+        propertyLocation: property['location']?.toString(),
+        brokerCode: property['brokerCode']?.toString(),
+        imageUrl: property['image']?.toString(),
+        price: property['price'] is num ? property['price'] as num : null,
+      );
+    } catch (_) {
+      if (wasSaved) {
+        _savedProperties.add(id);
+      } else {
+        _savedProperties.remove(id);
+      }
+      prefs.put('savedProperties', _savedProperties.toList());
+      if (!mounted) return;
+      setState(() {});
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not update favourites. Try again.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   bool _isSaved(String id) => _savedProperties.contains(id);
@@ -83,7 +114,12 @@ class _HomePageState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    final stored = Hive.box('myStore').get('savedProperties');
+    if (stored is List) {
+      _savedProperties.addAll(stored.map((e) => e.toString()));
+    }
     loadInitialData();
+    _loadVideoTours();
     _scrollController.addListener(() {
       if (_scrollController.position.pixels >=
               _scrollController.position.maxScrollExtent - 200 &&
@@ -94,16 +130,6 @@ class _HomePageState extends State<HomeScreen> {
     });
   }
 
-  Future<void> forceLogout(BuildContext context) async {
-    await database.clear();
-    if (mounted) {
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(builder: (_) => const OnBoardingScreen()),
-        (_) => false,
-      );
-    }
-  }
 
   void _initReelControllers() {
     for (int i = 0; i < reels.length; i++) {
@@ -163,7 +189,9 @@ class _HomePageState extends State<HomeScreen> {
     _disposeReelControllers();
     _activeReelIndex = -1;
     final list = <Map<String, dynamic>>[];
-    for (final p in displayedProperties) {
+    final source =
+        _videoTours.isNotEmpty ? _videoTours : displayedProperties;
+    for (final p in source) {
       final video = p['video'];
       if (video != null && video.toString().isNotEmpty) {
         list.add({
@@ -183,10 +211,33 @@ class _HomePageState extends State<HomeScreen> {
     _initReelControllers();
   }
 
+  Future<void> _loadVideoTours() async {
+    try {
+      final response = await _apiService.getVideoTours(page: 1, limit: 12);
+      final tours = (response['properties'] as List? ?? [])
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .where((p) => (p['video'] ?? '').toString().isNotEmpty)
+          .toList();
+      if (!mounted) return;
+      setState(() {
+        _videoTours = tours;
+        _rebuildReels();
+      });
+    } catch (e) {
+      debugPrint('Home video tours error: $e');
+    }
+  }
+
   Future<void> loadInitialData() async {
     final isSessionValid = await SessionService.validateSession();
     if (!isSessionValid) {
-      if (mounted) await forceLogout(context);
+      if (mounted) {
+        setState(() {
+          _loadFailed = true;
+          isLoading = false;
+        });
+      }
       return;
     }
 
@@ -459,6 +510,7 @@ class _HomePageState extends State<HomeScreen> {
 
   Future<void> _onRefresh() async {
     await loadInitialData();
+    await _loadVideoTours();
   }
 
   Widget buildShimmerCard() {
@@ -695,7 +747,7 @@ class _HomePageState extends State<HomeScreen> {
                 top: 10,
                 left: 10,
                   child: GestureDetector(
-                    onTap: () => _toggleSaveProperty(property['id']),
+                    onTap: () => _toggleSaveProperty(property),
                     child: Container(
                       width: 36,
                       height: 36,

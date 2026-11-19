@@ -1,9 +1,9 @@
 ﻿import 'package:flutter/material.dart';
-import 'package:zcanopy/pages/welcome.dart';
 import 'package:zcanopy/pages/loadIndicator.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:zcanopy/pages/itemDetails.dart';
-import 'package:zcanopy/pages/session.dart';
+import 'package:zcanopy/services/auth_service.dart';
+import 'package:zcanopy/utils/auth_gate.dart';
 import 'package:zcanopy/utils/currency.dart';
 import 'package:zcanopy/utils/theme_extensions.dart';
 import 'package:zcanopy/services/gateway_api.dart';
@@ -51,7 +51,11 @@ class _FavouritePageState extends State<FavouritePage> {
   @override
   void initState() {
     super.initState();
-    loadInitialData();
+    if (AuthService.instance.isSignedIn) {
+      loadInitialData();
+    } else {
+      isLoading = false;
+    }
     userID = database.get('userID');
 
     _scrollController.addListener(() {
@@ -64,21 +68,16 @@ class _FavouritePageState extends State<FavouritePage> {
     });
   }
 
-   Future<void> forceLogout(BuildContext context) async {
-    await database.clear();
-    await database.clear();
-
-    Navigator.pushAndRemoveUntil(
-      context,
-      MaterialPageRoute(builder: (_) => const OnBoardingScreen()),
-      (_) => false,
-    );
+  Future<void> _signIn() async {
+    if (!await ensureSignedIn(context)) return;
+    if (!mounted) return;
+    setState(() => isLoading = true);
+    await loadInitialData();
   }
 
   Future<void> loadInitialData() async {
-    final isSessionValid = await SessionService.validateSession();
-    if (!isSessionValid) {
-      if (mounted) await forceLogout(context);
+    if (!AuthService.instance.isSignedIn) {
+      if (mounted) setState(() => isLoading = false);
       return;
     }
 
@@ -197,6 +196,10 @@ class _FavouritePageState extends State<FavouritePage> {
           IconButton(
             icon: const Icon(Icons.refresh, color: Colors.white),
             onPressed: () async {
+              if (!AuthService.instance.isSignedIn) {
+                await _signIn();
+                return;
+              }
               setState(() {
                 isLoading = true;
                 displayedFavourites = [];
@@ -219,7 +222,9 @@ class _FavouritePageState extends State<FavouritePage> {
           color: context.isDarkMode
               ? Colors.transparent
               : Colors.white.withOpacity(0.85),
-          child: isLoading
+          child: !AuthService.instance.isSignedIn
+              ? _buildSignInState()
+              : isLoading
               ? const Padding(
                   padding: EdgeInsets.symmetric(vertical: 20),
                   child: Center(
@@ -334,6 +339,50 @@ class _FavouritePageState extends State<FavouritePage> {
             ),
           );
         },
+      ),
+    );
+  }
+
+  Widget _buildSignInState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.favorite_border, size: 72, color: Colors.grey[400]),
+            const SizedBox(height: 20),
+            Text(
+              "Sign in to see your favourites",
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+                color: Colors.grey[700],
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 10),
+            Text(
+              "Save properties and keep them in sync across your devices.",
+              style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton(
+              onPressed: _signIn,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color.fromARGB(255, 169, 97, 14),
+                foregroundColor: Colors.white,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 28, vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(24),
+                ),
+              ),
+              child: const Text("Sign in"),
+            ),
+          ],
+        ),
       ),
     );
   }

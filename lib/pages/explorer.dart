@@ -1,9 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:hive_flutter/hive_flutter.dart';
-import 'package:video_player/video_player.dart';
-import 'package:zcanopy/pages/welcome.dart';
 import 'package:zcanopy/pages/filter_wizard.dart';
 import 'package:zcanopy/pages/itemDetails.dart';
 import 'package:zcanopy/pages/session.dart';
@@ -48,7 +45,7 @@ class _ExplorePageState extends State<ExplorePage> {
     "Industrial Property",
     "Land",
     "Parking Space",
-    "Storage Unit"
+    "Storage Unit",
   ];
 
   final ScrollController _scrollController = ScrollController();
@@ -71,28 +68,14 @@ class _ExplorePageState extends State<ExplorePage> {
   final TextEditingController minPriceCtrl = TextEditingController();
   final TextEditingController maxPriceCtrl = TextEditingController();
   List<Map<String, dynamic>> _displayedItems = [];
+  List<Map<String, dynamic>> _tours = [];
 
-  final Map<int, VideoPlayerController> _reelControllers = {};
-  final Set<int> _initializedReels = {};
-  int _activeReelIndex = -1;
-  final ScrollController _reelScrollController = ScrollController();
   final Set<String> _savedProperties = {};
 
   Map<String, List<Map<String, dynamic>>> regions = {};
   var displayedRegions = {};
 
   List<String> regionsX = ["Region A", "Region B"];
-
-  Future<void> forceLogout(BuildContext context) async {
-    final database = Hive.box('myStore');
-    await database.clear();
-    if (!context.mounted) return;
-    Navigator.pushAndRemoveUntil(
-      context,
-      MaterialPageRoute(builder: (_) => const OnBoardingScreen()),
-      (_) => false,
-    );
-  }
 
   Future<void> _fetchItems({bool refresh = false}) async {
     if (_isLoading) return;
@@ -142,8 +125,7 @@ class _ExplorePageState extends State<ExplorePage> {
             .recordSearch(
               query: searchQuery,
               location: selectedLocation == 'All' ? null : selectedLocation,
-              propertyType:
-                  selectedCategory == 'All' ? null : selectedCategory,
+              propertyType: selectedCategory == 'All' ? null : selectedCategory,
               minPrice: minPrice,
               maxPrice: maxPrice,
               resultCount: next.length,
@@ -186,6 +168,7 @@ class _ExplorePageState extends State<ExplorePage> {
   void initState() {
     super.initState();
     loadInitialData();
+    _loadVideoTours();
     _scrollController.addListener(() {
       if (_scrollController.position.pixels >=
               _scrollController.position.maxScrollExtent - 200 &&
@@ -199,20 +182,32 @@ class _ExplorePageState extends State<ExplorePage> {
   @override
   void dispose() {
     _scrollController.dispose();
-    _reelScrollController.dispose();
-    for (final c in _reelControllers.values) c.dispose();
-    _reelControllers.clear();
     super.dispose();
   }
 
   Future<void> _onRefresh() async {
     await loadInitialData();
+    await _loadVideoTours();
+  }
+
+  Future<void> _loadVideoTours() async {
+    try {
+      final response = await _api.getVideoTours(page: 1, limit: 12);
+      final list = (response['properties'] as List? ?? [])
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .where((p) => (p['video'] ?? '').toString().isNotEmpty)
+          .toList();
+      if (mounted) setState(() => _tours = list);
+    } catch (e) {
+      debugPrint('Video tours error: $e');
+    }
   }
 
   Future<void> loadInitialData() async {
     final isSessionValid = await SessionService.validateSession();
     if (!isSessionValid) {
-      if (mounted) await forceLogout(context);
+      if (mounted) setState(() => isLoading = false);
       return;
     }
     await _fetchItems(refresh: true);
@@ -221,20 +216,22 @@ class _ExplorePageState extends State<ExplorePage> {
   void applyFilters() {
     double? maxPrice = double.tryParse(maxPriceCtrl.text);
     double? minPrice = double.tryParse(minPriceCtrl.text);
-    
+
     final all = <Map<String, dynamic>>[];
     regions.forEach((_, items) {
       all.addAll(items.map((e) => Map<String, dynamic>.from(e)));
     });
 
     final filtered = all.where((prop) {
-      final matchesType = selectedCategory == 'All' || prop['type'] == selectedCategory;
-      final matchesSearch = (prop['name'] as String)
-          .toLowerCase()
-          .contains(searchQuery.toLowerCase());
-      final matchesLocation = selectedLocation == 'All' ||
-          prop['location'] == selectedLocation;
-      final matchesPrice = (minPrice == null || prop['price'] >= minPrice) &&
+      final matchesType =
+          selectedCategory == 'All' || prop['type'] == selectedCategory;
+      final matchesSearch = (prop['name'] as String).toLowerCase().contains(
+        searchQuery.toLowerCase(),
+      );
+      final matchesLocation =
+          selectedLocation == 'All' || prop['location'] == selectedLocation;
+      final matchesPrice =
+          (minPrice == null || prop['price'] >= minPrice) &&
           (maxPrice == null || prop['price'] <= maxPrice);
       return matchesType && matchesSearch && matchesLocation && matchesPrice;
     }).toList();
@@ -252,8 +249,10 @@ class _ExplorePageState extends State<ExplorePage> {
     });
 
     _filterDebounce?.cancel();
-    _filterDebounce =
-        Timer(const Duration(milliseconds: 600), () => _fetchItems(refresh: true));
+    _filterDebounce = Timer(
+      const Duration(milliseconds: 600),
+      () => _fetchItems(refresh: true),
+    );
   }
 
   Timer? _filterDebounce;
@@ -267,76 +266,107 @@ class _ExplorePageState extends State<ExplorePage> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
       ),
       builder: (_) {
-        return StatefulBuilder(builder: (context, setModalState) {
-          return Padding(
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return Padding(
               padding: EdgeInsets.only(
-                  bottom: MediaQuery.of(context).viewInsets.bottom),
+                bottom: MediaQuery.of(context).viewInsets.bottom,
+              ),
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 20,
+                ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Text("Sort & Filter",
-                        style: TextStyle(
-                            fontSize: 18, fontWeight: FontWeight.bold)),
+                    const Text(
+                      "Sort & Filter",
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                     const SizedBox(height: 16),
                     DropdownButtonFormField<String>(
                       value: _sortOrder,
                       items: const [
-                        DropdownMenuItem(value: 'date', child: Text('Date Added')),
-                        DropdownMenuItem(value: 'price_asc', child: Text('Price: Low to High')),
-                        DropdownMenuItem(value: 'price_desc', child: Text('Price: High to Low')),
+                        DropdownMenuItem(
+                          value: 'date',
+                          child: Text('Date Added'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'price_asc',
+                          child: Text('Price: Low to High'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'price_desc',
+                          child: Text('Price: High to Low'),
+                        ),
                       ],
                       onChanged: (val) {
                         setModalState(() => _sortOrder = val!);
                       },
                       decoration: const InputDecoration(
-                          labelText: "Sort By",
-                          border: OutlineInputBorder(),
-                          labelStyle: TextStyle(color: Colors.grey),
+                        labelText: "Sort By",
+                        border: OutlineInputBorder(),
+                        labelStyle: TextStyle(color: Colors.grey),
                       ),
                     ),
                     const SizedBox(height: 16),
                     DropdownButtonFormField<String>(
                       value: selectedLocation,
-                      items: ['All', 'Ntinda', 'Kisaasi', 'Naalya', 'Bweyogerere']
-                          .map((e) => DropdownMenuItem(
-                              value: e, child: Text(e.toString())))
-                          .toList(),
+                      items:
+                          ['All', 'Ntinda', 'Kisaasi', 'Naalya', 'Bweyogerere']
+                              .map(
+                                (e) => DropdownMenuItem(
+                                  value: e,
+                                  child: Text(e.toString()),
+                                ),
+                              )
+                              .toList(),
                       onChanged: (val) {
                         setModalState(() => selectedLocation = val!);
                       },
                       decoration: const InputDecoration(
-                          labelText: "Location / District",
-                          border: OutlineInputBorder(),
+                        labelText: "Location / District",
+                        border: OutlineInputBorder(),
                       ),
                     ),
                     const SizedBox(height: 16),
                     Row(
                       children: [
                         Expanded(
-                            child: TextFormField(
-                          controller: minPriceCtrl,
-                          keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(
-                            contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                            labelText: 'Min Price',
-                            border: OutlineInputBorder(),
+                          child: TextFormField(
+                            controller: minPriceCtrl,
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(
+                              contentPadding: EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 12,
+                              ),
+                              labelText: 'Min Price',
+                              border: OutlineInputBorder(),
+                            ),
+                            onChanged: (_) => applyFilters(),
                           ),
-                          onChanged: (_) => applyFilters(),
-                        )),
+                        ),
                         const SizedBox(width: 12),
                         Expanded(
-                            child: TextFormField(
-                          controller: maxPriceCtrl,
-                          keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(
-                            contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                            labelText: 'Max Price',
-                            border: OutlineInputBorder(),
+                          child: TextFormField(
+                            controller: maxPriceCtrl,
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(
+                              contentPadding: EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 12,
+                              ),
+                              labelText: 'Max Price',
+                              border: OutlineInputBorder(),
+                            ),
+                            onChanged: (_) => applyFilters(),
                           ),
-                          onChanged: (_) => applyFilters(),
-                        ))
+                        ),
                       ],
                     ),
                     const SizedBox(height: 20),
@@ -348,17 +378,27 @@ class _ExplorePageState extends State<ExplorePage> {
                           applyFilters();
                         },
                         style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color.fromARGB(255, 169, 97, 14),
-                            padding: const EdgeInsets.symmetric(vertical: 14)),
-                        child: const Text("Apply",
-                            style: TextStyle(color: Colors.white, fontSize: 16)),
+                          backgroundColor: const Color.fromARGB(
+                            255,
+                            169,
+                            97,
+                            14,
+                          ),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                        ),
+                        child: const Text(
+                          "Apply",
+                          style: TextStyle(color: Colors.white, fontSize: 16),
+                        ),
                       ),
                     ),
                     const SizedBox(height: 12),
                   ],
                 ),
-              ));
-        });
+              ),
+            );
+          },
+        );
       },
     );
   }
@@ -372,18 +412,20 @@ class _ExplorePageState extends State<ExplorePage> {
     );
   }
 
-  List<Map<String, dynamic>> get _videoTours => _displayedItems
-      .where((p) => p['video'] != null && p['video'].toString().isNotEmpty)
-      .map((p) => {
-            'videoUrl': p['video'],
-            'title': p['name']?.toString() ?? 'Property tour',
-            'location': p['location']?.toString() ?? '',
-            'subCounty': p['subCounty']?.toString() ?? '',
-            'district': p['district']?.toString() ?? '',
-            'brokerCode': p['brokerCode']?.toString() ?? '',
-            'brokerName': p['brokerName']?.toString() ?? 'Broker',
-            'brokerPhone': p['brokerPhone']?.toString() ?? '',
-          })
+  List<Map<String, dynamic>> get _videoTours => _tours
+      .map(
+        (p) => {
+          'id': p['id']?.toString() ?? '',
+          'videoUrl': p['video'],
+          'title': p['name']?.toString() ?? 'Property tour',
+          'location': p['location']?.toString() ?? '',
+          'subCounty': p['subCounty']?.toString() ?? '',
+          'district': p['district']?.toString() ?? '',
+          'brokerCode': p['brokerCode']?.toString() ?? '',
+          'brokerName': p['brokerName']?.toString() ?? 'Broker',
+          'brokerPhone': p['brokerPhone']?.toString() ?? '',
+        },
+      )
       .toList();
 
   void _openVideoTours() {
@@ -457,146 +499,167 @@ class _ExplorePageState extends State<ExplorePage> {
           color: const Color.fromARGB(255, 169, 97, 14),
           child: CustomScrollView(
             slivers: [
-            SliverAppBar(
-              pinned: true,
-              centerTitle: false,
-              automaticallyImplyLeading: false,
-              backgroundColor: headerBg,
-              surfaceTintColor: Colors.transparent,
-              elevation: 0,
-              toolbarHeight: 56,
-              titleSpacing: 0,
-              title: Padding(
-                padding: const EdgeInsets.only(left: 12, right: 8),
-                child: Text(
-                  "Explore",
-                  style: TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w600,
-                    color: iconColor,
-                  ),
-                ),
-              ),
-              actions: [
-                _buildCircleAction(
-                  icon: Icons.search,
-                  onPressed: () => showDialog(
-                    context: context,
-                    builder: (ctx) => FilterWizard(
-                      onComplete: (filters) {
-                        setState(() {
-                          selectedCategory = filters['type'] ?? 'All';
-                          selectedLocation = filters['location'] ?? 'All';
-                          minPriceCtrl.text = filters['minPrice'] ?? '';
-                          maxPriceCtrl.text = filters['maxPrice'] ?? '';
-                        });
-                        applyFilters();
-                      },
+              SliverAppBar(
+                pinned: true,
+                centerTitle: false,
+                automaticallyImplyLeading: false,
+                backgroundColor: headerBg,
+                surfaceTintColor: Colors.transparent,
+                elevation: 0,
+                toolbarHeight: 56,
+                titleSpacing: 0,
+                title: Padding(
+                  padding: const EdgeInsets.only(left: 12, right: 8),
+                  child: Text(
+                    "Explore",
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w600,
+                      color: iconColor,
                     ),
                   ),
                 ),
-                const SizedBox(width: 6),
-                _buildCircleAction(
-                  icon: Icons.filter_list,
-                  onPressed: openFilterSheet,
-                ),
-                const SizedBox(width: 6),
-                _buildCircleAction(
-                  icon: Icons.notifications_outlined,
-                  onPressed: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (context) => NotificationsPage()),
-                  ),
-                ),
-              ],
-            ),
-            SliverPersistentHeader(
-              pinned: true,
-              delegate: _SearchHeaderDelegate(
-                height: 106,
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: headerBg,
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.08),
-                        blurRadius: 4,
-                        offset: const Offset(0, 2),
+                actions: [
+                  _buildCircleAction(
+                    icon: Icons.search,
+                    onPressed: () => showDialog(
+                      context: context,
+                      builder: (ctx) => FilterWizard(
+                        onComplete: (filters) {
+                          setState(() {
+                            selectedCategory = filters['type'] ?? 'All';
+                            selectedLocation = filters['location'] ?? 'All';
+                            minPriceCtrl.text = filters['minPrice'] ?? '';
+                            maxPriceCtrl.text = filters['maxPrice'] ?? '';
+                          });
+                          applyFilters();
+                        },
                       ),
-                    ],
+                    ),
                   ),
-                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-                  child: SizedBox(
-                    height: 88,
-                    child: ListView(
-                      scrollDirection: Axis.horizontal,
-                      children: categories.take(9).map((type) {
-                        final isSelected = selectedCategory == type;
-                        return GestureDetector(
-                          onTap: () =>
-                              setState(() => selectedCategory = type),
-                          child: Padding(
-                            padding:
-                                const EdgeInsets.symmetric(horizontal: 6),
-                            child: Column(
-                              children: [
-                                Container(
-                                  width: 48,
-                                  height: 48,
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    color: isSelected
-                                        ? const Color.fromARGB(255, 169, 97, 14)
-                                        : Colors.white,
-                                    border: Border.all(
+                  const SizedBox(width: 6),
+                  _buildCircleAction(
+                    icon: Icons.filter_list,
+                    onPressed: openFilterSheet,
+                  ),
+                  const SizedBox(width: 6),
+                  _buildCircleAction(
+                    icon: Icons.notifications_outlined,
+                    onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => NotificationsPage(),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              SliverPersistentHeader(
+                pinned: true,
+                delegate: _SearchHeaderDelegate(
+                  height: 106,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: headerBg,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.08),
+                          blurRadius: 4,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                    child: SizedBox(
+                      height: 88,
+                      child: ListView(
+                        scrollDirection: Axis.horizontal,
+                        children: categories.take(9).map((type) {
+                          final isSelected = selectedCategory == type;
+                          return GestureDetector(
+                            onTap: () =>
+                                setState(() => selectedCategory = type),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                              ),
+                              child: Column(
+                                children: [
+                                  Container(
+                                    width: 48,
+                                    height: 48,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
                                       color: isSelected
                                           ? const Color.fromARGB(
-                                              255, 169, 97, 14)
-                                          : Colors.grey.shade400,
-                                      width: 1.5,
+                                              255,
+                                              169,
+                                              97,
+                                              14,
+                                            )
+                                          : Colors.white,
+                                      border: Border.all(
+                                        color: isSelected
+                                            ? const Color.fromARGB(
+                                                255,
+                                                169,
+                                                97,
+                                                14,
+                                              )
+                                            : Colors.grey.shade400,
+                                        width: 1.5,
+                                      ),
+                                    ),
+                                    child: Icon(
+                                      _categoryIcon(type),
+                                      color: isSelected
+                                          ? Colors.white
+                                          : const Color.fromARGB(
+                                              255,
+                                              169,
+                                              97,
+                                              14,
+                                            ),
+                                      size: 22,
                                     ),
                                   ),
-                                  child: Icon(
-                                    _categoryIcon(type),
-                                    color: isSelected
-                                        ? Colors.white
-                                        : const Color.fromARGB(255, 169, 97, 14),
-                                    size: 22,
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    type,
+                                    style: TextStyle(
+                                      color: isSelected
+                                          ? const Color.fromARGB(
+                                              255,
+                                              169,
+                                              97,
+                                              14,
+                                            )
+                                          : Colors.grey.shade700,
+                                      fontWeight: isSelected
+                                          ? FontWeight.w600
+                                          : FontWeight.w400,
+                                      fontSize: 11,
+                                    ),
                                   ),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  type,
-                                  style: TextStyle(
-                                    color: isSelected
-                                        ? const Color.fromARGB(255, 169, 97, 14)
-                                        : Colors.grey.shade700,
-                                    fontWeight: isSelected
-                                        ? FontWeight.w600
-                                        : FontWeight.w400,
-                                    fontSize: 11,
-                                  ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
-                          ),
-                        );
-                      }).toList(),
+                          );
+                        }).toList(),
+                      ),
                     ),
                   ),
                 ),
               ),
-            ),
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
-              sliver: SliverList(
-                delegate: SliverChildBuilderDelegate(
-                  (context, index) {
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+                sliver: SliverList(
+                  delegate: SliverChildBuilderDelegate((context, index) {
                     if (index >= _displayedItems.length) return null;
                     final property = _displayedItems[index];
                     final isSaved = _savedProperties.contains(property['id']);
-                    final status = property['status']?.toString() ?? 'Available';
+                    final status =
+                        property['status']?.toString() ?? 'Available';
                     final available = status.toLowerCase() == 'available';
                     return GestureDetector(
                       onTap: () => _openDetails(property),
@@ -604,7 +667,8 @@ class _ExplorePageState extends State<ExplorePage> {
                         color: isDark ? const Color(0xFF2A2A2A) : Colors.white,
                         margin: const EdgeInsets.only(bottom: 16),
                         shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16)),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
                         clipBehavior: Clip.antiAlias,
                         elevation: isDark ? 0 : 2,
                         shadowColor: Colors.black.withValues(alpha: 0.08),
@@ -622,8 +686,11 @@ class _ExplorePageState extends State<ExplorePage> {
                                     height: 200,
                                     color: Colors.grey.shade200,
                                     child: const Center(
-                                      child: Icon(Icons.home_outlined,
-                                          size: 40, color: Colors.grey),
+                                      child: Icon(
+                                        Icons.home_outlined,
+                                        size: 40,
+                                        color: Colors.grey,
+                                      ),
                                     ),
                                   ),
                                 ),
@@ -635,7 +702,7 @@ class _ExplorePageState extends State<ExplorePage> {
                                       end: Alignment.bottomCenter,
                                       colors: [
                                         Colors.transparent,
-                                        Colors.black26
+                                        Colors.black26,
                                       ],
                                     ),
                                   ),
@@ -645,20 +712,22 @@ class _ExplorePageState extends State<ExplorePage> {
                                   right: 10,
                                   child: Container(
                                     padding: const EdgeInsets.symmetric(
-                                        horizontal: 10, vertical: 5),
+                                      horizontal: 10,
+                                      vertical: 5,
+                                    ),
                                     decoration: BoxDecoration(
                                       color: available
                                           ? Colors.green
                                           : Colors.red,
-                                      borderRadius:
-                                          BorderRadius.circular(12),
+                                      borderRadius: BorderRadius.circular(12),
                                     ),
                                     child: Text(
                                       status,
                                       style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.w600),
+                                        color: Colors.white,
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600,
+                                      ),
                                     ),
                                   ),
                                 ),
@@ -668,11 +737,9 @@ class _ExplorePageState extends State<ExplorePage> {
                                   child: GestureDetector(
                                     onTap: () => setState(() {
                                       if (isSaved) {
-                                        _savedProperties
-                                            .remove(property['id']);
+                                        _savedProperties.remove(property['id']);
                                       } else {
-                                        _savedProperties
-                                            .add(property['id']);
+                                        _savedProperties.add(property['id']);
                                       }
                                     }),
                                     child: Container(
@@ -680,12 +747,14 @@ class _ExplorePageState extends State<ExplorePage> {
                                       height: 36,
                                       decoration: BoxDecoration(
                                         shape: BoxShape.circle,
-                                        color: Colors.white
-                                            .withValues(alpha: 0.9),
+                                        color: Colors.white.withValues(
+                                          alpha: 0.9,
+                                        ),
                                         boxShadow: [
                                           BoxShadow(
-                                            color: Colors.black
-                                                .withValues(alpha: 0.15),
+                                            color: Colors.black.withValues(
+                                              alpha: 0.15,
+                                            ),
                                             blurRadius: 6,
                                             offset: const Offset(0, 2),
                                           ),
@@ -697,7 +766,11 @@ class _ExplorePageState extends State<ExplorePage> {
                                             : Icons.bookmark_border,
                                         color: isSaved
                                             ? const Color.fromARGB(
-                                                255, 169, 97, 14)
+                                                255,
+                                                169,
+                                                97,
+                                                14,
+                                              )
                                             : Colors.grey.shade600,
                                         size: 20,
                                       ),
@@ -705,24 +778,23 @@ class _ExplorePageState extends State<ExplorePage> {
                                   ),
                                 ),
                                 if ((property['video'] != null &&
-                                        property['video']
-                                            .toString()
-                                            .isNotEmpty))
+                                    property['video'].toString().isNotEmpty))
                                   Positioned(
                                     bottom: 10,
                                     right: 10,
                                     child: Container(
                                       padding: const EdgeInsets.all(6),
                                       decoration: BoxDecoration(
-                                        color: Colors.black
-                                            .withValues(alpha: 0.6),
-                                        borderRadius:
-                                            BorderRadius.circular(20),
+                                        color: Colors.black.withValues(
+                                          alpha: 0.6,
+                                        ),
+                                        borderRadius: BorderRadius.circular(20),
                                       ),
                                       child: const Icon(
-                                          Icons.play_circle_fill,
-                                          color: Colors.white,
-                                          size: 24),
+                                        Icons.play_circle_fill,
+                                        color: Colors.white,
+                                        size: 24,
+                                      ),
                                     ),
                                   ),
                               ],
@@ -730,8 +802,7 @@ class _ExplorePageState extends State<ExplorePage> {
                             Padding(
                               padding: const EdgeInsets.all(14),
                               child: Column(
-                                crossAxisAlignment:
-                                    CrossAxisAlignment.start,
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
                                     property['name'],
@@ -743,33 +814,32 @@ class _ExplorePageState extends State<ExplorePage> {
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                   const SizedBox(height: 6),
-Text(
-                                  formatUgx(property['price']),
-                                  style: const TextStyle(
-                                    color: Color.fromARGB(
-                                        255, 169, 97, 14),
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 16,
+                                  Text(
+                                    formatUgx(property['price']),
+                                    style: const TextStyle(
+                                      color: Color.fromARGB(255, 169, 97, 14),
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 16,
+                                    ),
                                   ),
-                                ),
                                   const SizedBox(height: 6),
                                   Row(
                                     children: [
                                       const Icon(
-                                          Icons.location_on_outlined,
-                                          size: 14,
-                                          color: Colors.grey),
+                                        Icons.location_on_outlined,
+                                        size: 14,
+                                        color: Colors.grey,
+                                      ),
                                       const SizedBox(width: 4),
                                       Expanded(
                                         child: Text(
                                           "${property['subCounty']}, ${property['district']}",
                                           style: TextStyle(
-                                              color:
-                                                  Colors.grey.shade600,
-                                              fontSize: 12),
+                                            color: Colors.grey.shade600,
+                                            fontSize: 12,
+                                          ),
                                           maxLines: 1,
-                                          overflow:
-                                              TextOverflow.ellipsis,
+                                          overflow: TextOverflow.ellipsis,
                                         ),
                                       ),
                                     ],
@@ -778,23 +848,31 @@ Text(
                                   Row(
                                     children: [
                                       Container(
-                                        padding: const EdgeInsets
-                                            .symmetric(
-                                            horizontal: 8, vertical: 3),
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                          vertical: 3,
+                                        ),
                                         decoration: BoxDecoration(
                                           color: const Color.fromARGB(
-                                                  255, 169, 97, 14)
-                                              .withValues(alpha: 0.1),
-                                          borderRadius:
-                                              BorderRadius.circular(8),
+                                            255,
+                                            169,
+                                            97,
+                                            14,
+                                          ).withValues(alpha: 0.1),
+                                          borderRadius: BorderRadius.circular(
+                                            8,
+                                          ),
                                         ),
                                         child: Text(
-                                          property['brokerName']
-                                                  ?.toString() ??
+                                          property['brokerName']?.toString() ??
                                               'Broker',
                                           style: const TextStyle(
                                             color: Color.fromARGB(
-                                                255, 169, 97, 14),
+                                              255,
+                                              169,
+                                              97,
+                                              14,
+                                            ),
                                             fontSize: 11,
                                             fontWeight: FontWeight.w600,
                                           ),
@@ -802,31 +880,39 @@ Text(
                                       ),
                                       const Spacer(),
                                       OutlinedButton.icon(
-                                        onPressed: () =>
-                                            _openDetails(property),
+                                        onPressed: () => _openDetails(property),
                                         icon: const Icon(
-                                            Icons.visibility_outlined,
-                                            size: 16),
-                                        label: const Text("View",
-                                            style:
-                                                TextStyle(fontSize: 12)),
+                                          Icons.visibility_outlined,
+                                          size: 16,
+                                        ),
+                                        label: const Text(
+                                          "View",
+                                          style: TextStyle(fontSize: 12),
+                                        ),
                                         style: OutlinedButton.styleFrom(
-                                          foregroundColor:
-                                              const Color.fromARGB(
-                                                  255, 169, 97, 14),
+                                          foregroundColor: const Color.fromARGB(
+                                            255,
+                                            169,
+                                            97,
+                                            14,
+                                          ),
                                           side: const BorderSide(
-                                              color: Color.fromARGB(
-                                                  255, 169, 97, 14)),
-                                          padding:
-                                              const EdgeInsets.symmetric(
-                                                  horizontal: 14,
-                                                  vertical: 6),
-                                          visualDensity:
-                                              VisualDensity.compact,
+                                            color: Color.fromARGB(
+                                              255,
+                                              169,
+                                              97,
+                                              14,
+                                            ),
+                                          ),
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 14,
+                                            vertical: 6,
+                                          ),
+                                          visualDensity: VisualDensity.compact,
                                           shape: RoundedRectangleBorder(
-                                            borderRadius:
-                                                BorderRadius.circular(
-                                                    20),
+                                            borderRadius: BorderRadius.circular(
+                                              20,
+                                            ),
                                           ),
                                         ),
                                       ),
@@ -839,19 +925,20 @@ Text(
                         ),
                       ),
                     );
-                  },
-                  childCount: _displayedItems.length,
+                  }, childCount: _displayedItems.length),
                 ),
               ),
-            ),
-           ],
-         ),
-       ),
-     ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
-  Widget _buildCircleAction({required IconData icon, required VoidCallback onPressed}) {
+  Widget _buildCircleAction({
+    required IconData icon,
+    required VoidCallback onPressed,
+  }) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       width: 42,
@@ -868,10 +955,7 @@ Text(
           ),
         ],
       ),
-      child: IconButton(
-        icon: Icon(icon),
-        onPressed: onPressed,
-      ),
+      child: IconButton(icon: Icon(icon), onPressed: onPressed),
     );
   }
 
@@ -924,8 +1008,7 @@ Text(
 }
 
 class _SearchHeaderDelegate extends SliverPersistentHeaderDelegate {
-  const _SearchHeaderDelegate(
-      {required this.child, required this.height});
+  const _SearchHeaderDelegate({required this.child, required this.height});
   final Widget child;
   final double height;
 
@@ -935,8 +1018,11 @@ class _SearchHeaderDelegate extends SliverPersistentHeaderDelegate {
   double get maxExtent => height;
 
   @override
-  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) =>
-      SizedBox(height: maxExtent, child: child);
+  Widget build(
+    BuildContext context,
+    double shrinkOffset,
+    bool overlapsContent,
+  ) => SizedBox(height: maxExtent, child: child);
 
   @override
   bool shouldRebuild(covariant _SearchHeaderDelegate old) =>

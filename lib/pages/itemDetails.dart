@@ -5,8 +5,8 @@ import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
 import 'package:zcanopy/pages/brokerCollection.dart';
-import 'package:zcanopy/pages/login.dart';
 import 'package:zcanopy/services/gateway_api.dart';
+import 'package:zcanopy/utils/auth_gate.dart';
 import 'package:zcanopy/utils/property_normalizer.dart';
 import 'package:zcanopy/utils/currency.dart';
 import 'package:zcanopy/utils/theme_extensions.dart';
@@ -280,33 +280,51 @@ class _PropertyDetailsPageState extends State<PropertyDetailsPage> {
     return list is List && list.contains(id);
   }
 
-  void _toggleSave() {
+  Future<void> _toggleSave() async {
+    if (!await ensureSignedIn(context)) return;
+    if (!mounted) return;
     final id = _model!.id;
     final List<String> list =
         List<String>.from(database.get('savedProperties') ?? []);
-    if (list.contains(id)) {
+    final wasSaved = list.contains(id);
+    if (wasSaved) {
       list.remove(id);
     } else {
       list.add(id);
     }
     setState(() => _isFavorited = !_isFavorited);
-    database.put('savedProperties', list);
+    await database.put('savedProperties', list);
 
     final model = _model;
-    if (model != null) {
-      GatewayApi()
-          .toggleFavorite(
-            propertyId: model.id,
-            propertyTitle: model.title,
-            propertyLocation: model.location,
-            brokerCode: model.brokerCode,
-            imageUrl: model.media.isNotEmpty &&
-                    model.media.first.type == _MediaType.image
+    if (model == null) return;
+    try {
+      await GatewayApi().toggleFavorite(
+        propertyId: model.id,
+        propertyTitle: model.title,
+        propertyLocation: model.location,
+        brokerCode: model.brokerCode,
+        imageUrl:
+            model.media.isNotEmpty && model.media.first.type == _MediaType.image
                 ? model.media.first.url
                 : '',
-            price: model.price is num ? model.price as num : 0,
-          )
-          .catchError((_) => <String, dynamic>{});
+        price: model.price is num ? model.price as num : 0,
+      );
+    } catch (_) {
+      final rollback = List<String>.from(database.get('savedProperties') ?? []);
+      if (wasSaved) {
+        if (!rollback.contains(id)) rollback.add(id);
+      } else {
+        rollback.remove(id);
+      }
+      await database.put('savedProperties', rollback);
+      if (!mounted) return;
+      setState(() => _isFavorited = wasSaved);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not update favourites. Try again.'),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 
@@ -409,22 +427,9 @@ class _PropertyDetailsPageState extends State<PropertyDetailsPage> {
     }
   }
 
-  bool get _isLoggedIn {
-    final phone = database.get('phoneNumber')?.toString() ?? '';
-    return phone.isNotEmpty &&
-        phone != 'none' &&
-        phone != 'unavailable';
-  }
-
   Future<void> _openPaymentDialog() async {
-    if (!_isLoggedIn) {
-      if (!mounted) return;
-      final loggedIn = await Navigator.push<bool>(
-        context,
-        MaterialPageRoute(builder: (_) => const LoginPage()),
-      );
-      if (loggedIn != true || !mounted) return;
-    }
+    if (!await ensureSignedIn(context)) return;
+    if (!mounted) return;
     final model = _model!;
     final v = _variant;
     final property = <String, dynamic>{

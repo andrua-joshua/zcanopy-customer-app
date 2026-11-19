@@ -1,6 +1,5 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
-import 'package:zcanopy/pages/welcome.dart';
 import 'package:zcanopy/pages/editProfile.dart';
 import 'package:zcanopy/pages/bookings.dart';
 import 'package:zcanopy/pages/settings.dart';
@@ -9,6 +8,8 @@ import 'package:zcanopy/pages/help.dart';
 import 'package:zcanopy/utils/colors.dart';
 import 'package:zcanopy/utils/currency.dart';
 import 'package:zcanopy/pages/itemDetails.dart';
+import 'package:zcanopy/services/auth_service.dart';
+import 'package:zcanopy/utils/auth_gate.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -19,23 +20,29 @@ class ProfilePage extends StatefulWidget {
 
 class _ProfilePageState extends State<ProfilePage> {
   final database = Hive.box('myStore');
-  bool isTenant = false;
 
-  @override
-  void initState() {
-    super.initState();
-    isTenant = database.get('accountType') == 'tenant';
+  Future<void> _signOut() async {
+    await AuthService.instance.signOut();
+    if (mounted) setState(() {});
   }
 
-  Future<void> forceLogout(BuildContext context) async {
-    await database.clear();
-    if (mounted) {
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(builder: (_) => const OnBoardingScreen()),
-        (_) => false,
-      );
-    }
+  Future<void> _openEditProfile() async {
+    if (!await ensureSignedIn(context)) return;
+    if (!mounted) return;
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => ProfilePageEdit()),
+    );
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _openNotifications() async {
+    if (!await ensureSignedIn(context)) return;
+    if (!mounted) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => NotificationsPage()),
+    );
   }
 
   void showLogoutWarning(BuildContext context) {
@@ -65,7 +72,7 @@ class _ProfilePageState extends State<ProfilePage> {
             ),
             onPressed: () {
               Navigator.pop(ctx);
-              forceLogout(context);
+              _signOut();
             },
             child: const Text("Log Out", style: TextStyle(color: Colors.white)),
           ),
@@ -84,9 +91,12 @@ class _ProfilePageState extends State<ProfilePage> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final username = database.get('username') ?? 'Guest User';
-    final email = database.get('email') ?? '';
-    final accountType = database.get('accountType') ?? 'tenant';
+    final signedIn = AuthService.instance.isSignedIn;
+    final username =
+        signedIn ? AuthService.instance.displayName : 'Guest User';
+    final email = signedIn
+        ? (AuthService.instance.email ?? '')
+        : 'Sign in to sync favourites, bookings and payments';
     final photoUrl = database.get('photoURL') as String?;
     final savedProps = _getSavedProperties();
 
@@ -153,7 +163,7 @@ class _ProfilePageState extends State<ProfilePage> {
                                   borderRadius: BorderRadius.circular(12),
                                 ),
                                 child: Text(
-                                  accountType.toUpperCase(),
+                                  signedIn ? 'CUSTOMER' : 'GUEST',
                                   style: const TextStyle(
                                     fontSize: 11,
                                     fontWeight: FontWeight.bold,
@@ -164,15 +174,11 @@ class _ProfilePageState extends State<ProfilePage> {
                             ],
                           ),
                         ),
-                        IconButton(
-                          icon: const Icon(Icons.edit_outlined),
-                          onPressed: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(builder: (_) => ProfilePageEdit()),
-                            );
-                          },
-                        ),
+                        if (signedIn)
+                          IconButton(
+                            icon: const Icon(Icons.edit_outlined),
+                            onPressed: _openEditProfile,
+                          ),
                       ],
                     ),
                   ],
@@ -343,25 +349,13 @@ class _ProfilePageState extends State<ProfilePage> {
                       _buildMenuItem(
                         Icons.person_outline,
                         "Edit Profile",
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(builder: (_) => ProfilePageEdit()),
-                          );
-                        },
+                        onTap: _openEditProfile,
                       ),
                       _buildDivider(),
                       _buildMenuItem(
                         Icons.notifications_none,
                         "Notifications",
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => NotificationsPage(),
-                            ),
-                          );
-                        },
+                        onTap: _openNotifications,
                       ),
                     ],
                   ),
@@ -411,27 +405,45 @@ class _ProfilePageState extends State<ProfilePage> {
 
             const SliverToBoxAdapter(child: SizedBox(height: 16)),
 
-            // Logout Button
+            // Sign in / Logout
             SliverPadding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               sliver: SliverToBoxAdapter(
                 child: GestureDetector(
-                  onTap: () => showLogoutWarning(context),
+                  onTap: signedIn
+                      ? () => showLogoutWarning(context)
+                      : () async {
+                          if (await ensureSignedIn(context) && mounted) {
+                            setState(() {});
+                          }
+                        },
                   child: Container(
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     decoration: BoxDecoration(
-                      color: Colors.red.withOpacity(0.08),
+                      color: signedIn
+                          ? Colors.red.withOpacity(0.08)
+                          : AppColors.primaryBrown.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
-                      children: const [
-                        Icon(Icons.logout_rounded, color: Colors.red, size: 20),
-                        SizedBox(width: 8),
+                      children: [
+                        Icon(
+                          signedIn
+                              ? Icons.logout_rounded
+                              : Icons.login_rounded,
+                          color: signedIn
+                              ? Colors.red
+                              : AppColors.primaryBrown,
+                          size: 20,
+                        ),
+                        const SizedBox(width: 8),
                         Text(
-                          "Log Out",
+                          signedIn ? "Log Out" : "Sign In",
                           style: TextStyle(
-                            color: Colors.red,
+                            color: signedIn
+                                ? Colors.red
+                                : AppColors.primaryBrown,
                             fontSize: 16,
                             fontWeight: FontWeight.w600,
                           ),

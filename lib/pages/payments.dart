@@ -4,6 +4,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:zcanopy/pages/loadIndicator.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:zcanopy/pages/session.dart';
+import 'package:zcanopy/services/auth_service.dart';
+import 'package:zcanopy/utils/auth_gate.dart';
 import 'package:zcanopy/utils/theme_extensions.dart';
 import 'package:zcanopy/services/gateway_api.dart';
 import 'package:zcanopy/utils/colors.dart';
@@ -45,8 +47,10 @@ class _PaymentsPageState extends State<PaymentsPage> {
     final storedPhone = _phoneRetrieveCtrl.text;
     if (storedCode.isNotEmpty && storedPhone.isNotEmpty) {
       _retrievePayments(storedCode, storedPhone);
-    } else {
+    } else if (AuthService.instance.isSignedIn) {
       loadInitialData();
+    } else {
+      _isLoading = false;
     }
 
     _scrollController.addListener(() {
@@ -79,10 +83,34 @@ class _PaymentsPageState extends State<PaymentsPage> {
         code: code.trim(),
         phoneNumber: phone.trim(),
       );
-      final dynamic raw = data['payments'] ??
-          data['transactions'] ??
-          data['data'] ??
-          (data['id'] != null ? [data] : const []);
+      final booking = data['booking'];
+      final bookingPhone =
+          booking is Map ? booking['customerPhone']?.toString() ?? '' : '';
+      String tail(String value) {
+        final digits = value.replaceAll(RegExp(r'[^0-9]'), '');
+        return digits.length <= 9
+            ? digits
+            : digits.substring(digits.length - 9);
+      }
+
+      final supplied = tail(phone);
+      final stored = tail(bookingPhone);
+      final matches =
+          supplied.isEmpty || stored.isEmpty || supplied == stored;
+      final raw = booking is Map && matches
+          ? [
+              {
+                ...booking,
+                'paymentStatus': (booking['status']?.toString().toLowerCase() ??
+                            '') ==
+                        'booked'
+                    ? 'SUCCESS'
+                    : booking['status'],
+                'clientPhone': booking['customerPhone'],
+                'reasonForPayment': booking['reason'],
+              }
+            ]
+          : const [];
       final fetched = normalizeTransactions(raw);
       if (mounted) {
         setState(() {
@@ -122,11 +150,17 @@ class _PaymentsPageState extends State<PaymentsPage> {
     }
   }
 
+  Future<void> _signIn() async {
+    if (!await ensureSignedIn(context)) return;
+    if (!mounted) return;
+    setState(() => _isLoading = true);
+    await loadInitialData();
+  }
+
   Future<void> loadInitialData() async {
     userID = database.get('userID');
-    final isSessionValid = await SessionService.validateSession();
-    if (!isSessionValid) {
-      if (mounted) await forceLogout(context);
+    if (!AuthService.instance.isSignedIn) {
+      if (mounted) setState(() => _isLoading = false);
       return;
     }
 
@@ -144,6 +178,7 @@ class _PaymentsPageState extends State<PaymentsPage> {
   }
 
   Future<void> _fetchPage(int page, {bool replace = false}) async {
+    if (!AuthService.instance.isSignedIn) return;
     try {
       final response = await _api.getTransactions(page: page, limit: TXNPerPage);
       final fetched = normalizeTransactions(
@@ -263,6 +298,10 @@ class _PaymentsPageState extends State<PaymentsPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _buildRetrievalCard(),
+              if (!AuthService.instance.isSignedIn &&
+                  displayedTXN.isEmpty &&
+                  !_isLoading)
+                _buildSignInPrompt(),
               const SizedBox(height: 16),
               // Current Payment Summary
              /* Container(
@@ -506,6 +545,51 @@ class _PaymentsPageState extends State<PaymentsPage> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildSignInPrompt() {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: context.isDarkMode ? const Color(0xFF2A2A2A) : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        children: [
+          Icon(Icons.account_balance_wallet_outlined,
+              size: 56, color: Colors.grey[400]),
+          const SizedBox(height: 12),
+          Text(
+            "Sign in to see all your payments",
+            textAlign: TextAlign.center,
+            style: GoogleFonts.poppins(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: context.isDarkMode ? Colors.white : Colors.black87,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            "You can still retrieve a single payment with the code on your invoice.",
+            textAlign: TextAlign.center,
+            style: GoogleFonts.poppins(fontSize: 12, color: Colors.grey),
+          ),
+          const SizedBox(height: 14),
+          ElevatedButton(
+            onPressed: _signIn,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primaryBrown,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(24),
+              ),
+            ),
+            child: const Text("Sign in"),
+          ),
+        ],
       ),
     );
   }

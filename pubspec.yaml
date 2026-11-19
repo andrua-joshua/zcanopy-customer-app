@@ -1,7 +1,7 @@
 name: zcanopy
 description: "A brokers smart way of finding properties."
 publish_to: 'none'
-version: 1.0.0+1
+version: 1.0.1+7
 
 environment:
   sdk: ^3.10.0

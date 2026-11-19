@@ -2,7 +2,8 @@
 import 'package:zcanopy/pages/welcome.dart';
 import 'package:zcanopy/pages/loadIndicator.dart';
 import 'package:hive_flutter/hive_flutter.dart';
-import 'package:zcanopy/pages/session.dart';
+import 'package:zcanopy/services/auth_service.dart';
+import 'package:zcanopy/utils/auth_gate.dart';
 import 'package:zcanopy/utils/colors.dart';
 import 'package:zcanopy/pages/bookings.dart';
 import 'package:zcanopy/pages/payments.dart';
@@ -59,7 +60,11 @@ class _NotificationsPageState extends State<NotificationsPage> {
   void initState() {
     super.initState();
     userID = database.get('userID');
-    loadInitialData();
+    if (AuthService.instance.isSignedIn) {
+      loadInitialData();
+    } else {
+      isLoading = false;
+    }
     _scrollController.addListener(_onScroll);
   }
 
@@ -83,12 +88,16 @@ class _NotificationsPageState extends State<NotificationsPage> {
     );
   }
 
+  Future<void> _signIn() async {
+    if (!await ensureSignedIn(context)) return;
+    if (!mounted) return;
+    setState(() => isLoading = true);
+    await loadInitialData();
+  }
+
   Future<void> loadInitialData() async {
-    final isSessionValid = await SessionService.validateSession();
-    if (!isSessionValid) {
-      if (mounted) {
-        await forceLogout(context);
-      }
+    if (!AuthService.instance.isSignedIn) {
+      if (mounted) setState(() => isLoading = false);
       return;
     }
 
@@ -178,15 +187,6 @@ class _NotificationsPageState extends State<NotificationsPage> {
     await box.put('items', _notifications);
   }
 
-  Future<void> _markAsReadOnServer(String? id) async {
-    if (id == null || id.toString().isEmpty) return;
-    try {
-      await _api.markNotificationsRead(id: id);
-    } catch (e) {
-      debugPrint("Mark as read error: $e");
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -221,7 +221,13 @@ class _NotificationsPageState extends State<NotificationsPage> {
               Icons.refresh,
               color: context.isDarkMode ? Colors.white : Colors.black,
             ),
-            onPressed: () => _getNotif(refresh: true),
+            onPressed: () {
+              if (AuthService.instance.isSignedIn) {
+                _getNotif(refresh: true);
+              } else {
+                _signIn();
+              }
+            },
           ),
         ],
       ),
@@ -238,7 +244,9 @@ class _NotificationsPageState extends State<NotificationsPage> {
           color: context.isDarkMode
               ? Colors.transparent
               : Colors.white.withOpacity(0.85),
-          child: isLoading
+          child: !AuthService.instance.isSignedIn
+              ? _buildSignInState()
+              : isLoading
               ? const Padding(
                   padding: EdgeInsets.symmetric(vertical: 20),
                   child: Center(
@@ -279,6 +287,50 @@ class _NotificationsPageState extends State<NotificationsPage> {
                     ),
                   ],
                 ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSignInState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.notifications_none, size: 72, color: Colors.grey[400]),
+            const SizedBox(height: 20),
+            Text(
+              "Sign in to see notifications",
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+                color: Colors.grey[700],
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 10),
+            Text(
+              "Booking updates, payment receipts and account alerts appear here.",
+              style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton(
+              onPressed: _signIn,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primaryBrown,
+                foregroundColor: Colors.white,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 28, vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(24),
+                ),
+              ),
+              child: const Text("Sign in"),
+            ),
+          ],
         ),
       ),
     );
@@ -482,12 +534,10 @@ class _NotificationsPageState extends State<NotificationsPage> {
   }
 
   void _onNotificationTap(Map<String, dynamic> notification) {
-    final wasUnread = !(notification['read'] ?? false);
     setState(() {
       notification['read'] = true;
     });
     _persistNotifications();
-    if (wasUnread) _markAsReadOnServer(notification['id']);
 
     // Route the user to the most relevant screen for the notification type.
     switch (notification['type']) {
@@ -526,7 +576,6 @@ class _NotificationsPageState extends State<NotificationsPage> {
       }
     });
     _persistNotifications();
-    _api.markNotificationsRead(all: true).catchError((_) => <String, dynamic>{});
 
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
