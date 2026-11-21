@@ -38,14 +38,29 @@ class _FilterWizardState extends State<FilterWizard>
   String _selectedLocation = 'All';
 
   final List<String> _propertyTypes = [
-    'House',
-    'Apartment',
+    'Bungalow',
+    'Townhouse',
     'Condominium',
-    'Office',
-    'Land',
-    'Warehouse',
+    'Studio',
+    'Single Room',
+    'Double Room',
+    'Self-contained',
+    'Shop Unit',
+    'Stall',
+    'Mall',
+    'Plaza',
+    'Corporate Tower',
+    'Storage',
+    'Depot',
+    'Plot of Land',
+    'Farmland',
+    'Acreage',
+    'Mailo Land',
     'Hotel',
-    'Shop',
+    'Guest House',
+    'Safari Lodge',
+    'Lodge',
+    'Shops Below, Flats Above',
   ];
 
   final List<String> _locations = [
@@ -319,22 +334,52 @@ class _FilterWizardState extends State<FilterWizard>
 
   IconData _getTypeIcon(String type) {
     switch (type) {
-      case 'House':
+      case 'Bungalow':
         return Icons.home;
-      case 'Apartment':
-        return Icons.apartment;
+      case 'Townhouse':
+        return Icons.holiday_village;
       case 'Condominium':
-        return Icons.villa;
-      case 'Office':
-        return Icons.work;
-      case 'Land':
-        return Icons.terrain;
-      case 'Warehouse':
+        return Icons.apartment;
+      case 'Studio':
+        return Icons.meeting_room;
+      case 'Single Room':
+        return Icons.bed;
+      case 'Double Room':
+        return Icons.king_bed;
+      case 'Self-contained':
+        return Icons.home_work;
+      case 'Shop Unit':
+        return Icons.storefront;
+      case 'Stall':
+        return Icons.store;
+      case 'Mall':
+        return Icons.local_mall;
+      case 'Plaza':
+        return Icons.business;
+      case 'Corporate Tower':
+        return Icons.location_city;
+      case 'Storage':
+        return Icons.inventory_2;
+      case 'Depot':
         return Icons.warehouse;
+      case 'Plot of Land':
+        return Icons.terrain;
+      case 'Farmland':
+        return Icons.agriculture;
+      case 'Acreage':
+        return Icons.landscape;
+      case 'Mailo Land':
+        return Icons.map;
       case 'Hotel':
         return Icons.hotel;
-      case 'Shop':
-        return Icons.store;
+      case 'Guest House':
+        return Icons.house;
+      case 'Safari Lodge':
+        return Icons.cabin;
+      case 'Lodge':
+        return Icons.cottage;
+      case 'Shops Below, Flats Above':
+        return Icons.store_mall_directory;
       default:
         return Icons.home;
     }

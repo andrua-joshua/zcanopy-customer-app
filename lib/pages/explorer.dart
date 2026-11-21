@@ -18,34 +18,29 @@ class _ExplorePageState extends State<ExplorePage> {
   String selectedCategory = "All";
   final List<String> categories = [
     "All",
-    "House",
-    "Apartment",
-    "Condominium",
+    "Bungalow",
     "Townhouse",
-    "Villa",
+    "Condominium",
+    "Studio",
     "Single Room",
     "Double Room",
-    "Flat",
-    "Bungalow",
-    "Mansion",
-    "Duplex",
-    "Triplex",
-    "Studio",
-    "Loft",
-    "Penthouse",
-    "Cottage",
-    "Cabin",
-    "Farmhouse",
-    "Ranch",
-    "Mobile Home",
-    "Tiny House",
-    "Office",
-    "Retail Space",
-    "Warehouse",
-    "Industrial Property",
-    "Land",
-    "Parking Space",
-    "Storage Unit",
+    "Self-contained",
+    "Shop Unit",
+    "Stall",
+    "Mall",
+    "Plaza",
+    "Corporate Tower",
+    "Storage",
+    "Depot",
+    "Plot of Land",
+    "Farmland",
+    "Acreage",
+    "Mailo Land",
+    "Hotel",
+    "Guest House",
+    "Safari Lodge",
+    "Lodge",
+    "Shops Below, Flats Above",
   ];
 
   final ScrollController _scrollController = ScrollController();
@@ -574,7 +569,7 @@ class _ExplorePageState extends State<ExplorePage> {
                       height: 88,
                       child: ListView(
                         scrollDirection: Axis.horizontal,
-                        children: categories.take(9).map((type) {
+                        children: categories.map((type) {
                           final isSelected = selectedCategory == type;
                           return GestureDetector(
                             onTap: () =>
@@ -833,7 +828,23 @@ class _ExplorePageState extends State<ExplorePage> {
                                       const SizedBox(width: 4),
                                       Expanded(
                                         child: Text(
-                                          "${property['subCounty']}, ${property['district']}",
+                                          () {
+                                            final sub = property['subCounty']
+                                                    ?.toString() ??
+                                                '';
+                                            final dist = property['district']
+                                                    ?.toString() ??
+                                                '';
+                                            final loc = property['location']
+                                                    ?.toString() ??
+                                                '';
+                                            final parts = [sub, dist]
+                                                .where((s) => s.isNotEmpty)
+                                                .toList();
+                                            return parts.isNotEmpty
+                                                ? parts.join(', ')
+                                                : loc;
+                                          }(),
                                           style: TextStyle(
                                             color: Colors.grey.shade600,
                                             fontSize: 12,
@@ -845,78 +856,36 @@ class _ExplorePageState extends State<ExplorePage> {
                                     ],
                                   ),
                                   const SizedBox(height: 10),
-                                  Row(
-                                    children: [
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 8,
-                                          vertical: 3,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: const Color.fromARGB(
-                                            255,
-                                            169,
-                                            97,
-                                            14,
-                                          ).withValues(alpha: 0.1),
-                                          borderRadius: BorderRadius.circular(
-                                            8,
-                                          ),
-                                        ),
-                                        child: Text(
-                                          property['brokerName']?.toString() ??
-                                              'Broker',
-                                          style: const TextStyle(
-                                            color: Color.fromARGB(
-                                              255,
-                                              169,
-                                              97,
-                                              14,
-                                            ),
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 3,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: const Color.fromARGB(
+                                        255,
+                                        169,
+                                        97,
+                                        14,
+                                      ).withValues(alpha: 0.1),
+                                      borderRadius: BorderRadius.circular(
+                                        8,
                                       ),
-                                      const Spacer(),
-                                      OutlinedButton.icon(
-                                        onPressed: () => _openDetails(property),
-                                        icon: const Icon(
-                                          Icons.visibility_outlined,
-                                          size: 16,
+                                    ),
+                                    child: Text(
+                                      property['brokerName']?.toString() ??
+                                          'Broker',
+                                      style: const TextStyle(
+                                        color: Color.fromARGB(
+                                          255,
+                                          169,
+                                          97,
+                                          14,
                                         ),
-                                        label: const Text(
-                                          "View",
-                                          style: TextStyle(fontSize: 12),
-                                        ),
-                                        style: OutlinedButton.styleFrom(
-                                          foregroundColor: const Color.fromARGB(
-                                            255,
-                                            169,
-                                            97,
-                                            14,
-                                          ),
-                                          side: const BorderSide(
-                                            color: Color.fromARGB(
-                                              255,
-                                              169,
-                                              97,
-                                              14,
-                                            ),
-                                          ),
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 14,
-                                            vertical: 6,
-                                          ),
-                                          visualDensity: VisualDensity.compact,
-                                          shape: RoundedRectangleBorder(
-                                            borderRadius: BorderRadius.circular(
-                                              20,
-                                            ),
-                                          ),
-                                        ),
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600,
                                       ),
-                                    ],
+                                    ),
                                   ),
                                 ],
                               ),
@@ -963,44 +932,52 @@ class _ExplorePageState extends State<ExplorePage> {
     switch (type) {
       case 'All':
         return Icons.grid_view;
-      case 'House':
       case 'Bungalow':
-      case 'Townhouse':
-      case 'Villa':
-      case 'Duplex':
-      case 'Triplex':
-      case 'Farmhouse':
-      case 'Ranch':
-      case 'Mobile Home':
-      case 'Tiny House':
-      case 'Cottage':
-      case 'Cabin':
-      case 'Mansion':
         return Icons.home;
-      case 'Apartment':
-      case 'Studio':
-      case 'Loft':
-      case 'Penthouse':
-      case 'Flat':
-      case 'Single Room':
-      case 'Double Room':
-        return Icons.apartment;
+      case 'Townhouse':
+        return Icons.holiday_village;
       case 'Condominium':
-        return Icons.villa;
-      case 'Office':
-      case 'Office Space':
-      case 'Industrial Property':
-        return Icons.work;
-      case 'Retail Space':
-      case 'Storage Unit':
+        return Icons.apartment;
+      case 'Studio':
+        return Icons.meeting_room;
+      case 'Single Room':
+        return Icons.bed;
+      case 'Double Room':
+        return Icons.king_bed;
+      case 'Self-contained':
+        return Icons.home_work;
+      case 'Shop Unit':
+        return Icons.storefront;
+      case 'Stall':
         return Icons.store;
-      case 'Land':
-      case 'Parking Space':
-        return Icons.terrain;
-      case 'Warehouse':
+      case 'Mall':
+        return Icons.local_mall;
+      case 'Plaza':
+        return Icons.business;
+      case 'Corporate Tower':
+        return Icons.location_city;
+      case 'Storage':
+        return Icons.inventory_2;
+      case 'Depot':
         return Icons.warehouse;
+      case 'Plot of Land':
+        return Icons.terrain;
+      case 'Farmland':
+        return Icons.agriculture;
+      case 'Acreage':
+        return Icons.landscape;
+      case 'Mailo Land':
+        return Icons.map;
       case 'Hotel':
         return Icons.hotel;
+      case 'Guest House':
+        return Icons.house;
+      case 'Safari Lodge':
+        return Icons.cabin;
+      case 'Lodge':
+        return Icons.cottage;
+      case 'Shops Below, Flats Above':
+        return Icons.store_mall_directory;
       default:
         return Icons.home;
     }

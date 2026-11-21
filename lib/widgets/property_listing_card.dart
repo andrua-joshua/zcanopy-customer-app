@@ -3,7 +3,7 @@ import 'package:zcanopy/utils/currency.dart';
 
 /// Shared property listing card — same format used across the Home and
 /// Explorer screens. Renders the hero image, status chip, save bookmark,
-/// optional video-tour overlay, price, location and a View action.
+/// optional video-tour overlay, price and location.
 class PropertyListingCard extends StatelessWidget {
   final Map<String, dynamic> property;
   final bool Function(String id)? isSaved;
@@ -59,14 +59,16 @@ class PropertyListingCard extends StatelessWidget {
 
     void openDetails() => onOpen?.call();
 
-    return Card(
-      color: cardColor,
-      margin: margin ?? const EdgeInsets.only(bottom: 16),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      clipBehavior: Clip.antiAlias,
-      elevation: isDark ? 0 : 2,
-      shadowColor: Colors.black.withValues(alpha: 0.08),
-      child: Column(
+    return GestureDetector(
+      onTap: onOpen == null ? null : openDetails,
+      child: Card(
+        color: cardColor,
+        margin: margin ?? const EdgeInsets.only(bottom: 16),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        clipBehavior: Clip.antiAlias,
+        elevation: isDark ? 0 : 2,
+        shadowColor: Colors.black.withValues(alpha: 0.08),
+        child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Stack(
@@ -222,54 +224,29 @@ class PropertyListingCard extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 10),
-                Row(
-                  children: [
-                    Flexible(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: _brown.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          property['brokerName']?.toString() ?? 'Broker',
-                          style: const TextStyle(
-                            color: _brown,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: _brown.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    property['brokerName']?.toString() ?? 'Broker',
+                    style: const TextStyle(
+                      color: _brown,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
                     ),
-                    if (onOpen != null) ...[
-                      const Spacer(),
-                      const SizedBox(width: 8),
-                      OutlinedButton.icon(
-                        onPressed: openDetails,
-                        icon: const Icon(Icons.visibility_outlined, size: 16),
-                        label:
-                            const Text("View", style: TextStyle(fontSize: 12)),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: _brown,
-                          side: const BorderSide(color: _brown),
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 14, vertical: 6),
-                          visualDensity: VisualDensity.compact,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ],
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
               ],
             ),
           ),
         ],
+      ),
       ),
     );
   }

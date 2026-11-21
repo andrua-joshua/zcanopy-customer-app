@@ -2,12 +2,12 @@
 
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
-import 'package:motion_tab_bar_v2/motion-tab-bar.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:zcanopy/pages/userProfile.dart';
 import 'package:zcanopy/pages/explorer.dart';
 import 'package:zcanopy/pages/itemDetails.dart';
 import 'package:zcanopy/pages/loadIndicator.dart';
+import 'package:zcanopy/pages/reels_page.dart';
 import 'package:zcanopy/services/gateway_api.dart';
 import 'package:zcanopy/pages/notifications.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -28,16 +28,58 @@ class _HomePageState extends State<HomeScreen> {
   final _apiService = GatewayApi();
   final database = Hive.box("myStore");
 
+  static const List<String> _propertyCategories = [
+    'All',
+    'Bungalow',
+    'Townhouse',
+    'Condominium',
+    'Studio',
+    'Single Room',
+    'Double Room',
+    'Self-contained',
+    'Shop Unit',
+    'Stall',
+    'Mall',
+    'Plaza',
+    'Corporate Tower',
+    'Storage',
+    'Depot',
+    'Plot of Land',
+    'Farmland',
+    'Acreage',
+    'Mailo Land',
+    'Hotel',
+    'Guest House',
+    'Safari Lodge',
+    'Lodge',
+    'Shops Below, Flats Above',
+  ];
+
   static const Map<String, IconData> _categoryIcons = {
     'All': Icons.grid_view,
-    'House': Icons.home,
-    'Apartment': Icons.apartment,
-    'Condominium': Icons.villa,
-    'Office': Icons.work,
-    'Shop': Icons.store,
-    'Land': Icons.terrain,
-    'Warehouse': Icons.warehouse,
+    'Bungalow': Icons.home,
+    'Townhouse': Icons.holiday_village,
+    'Condominium': Icons.apartment,
+    'Studio': Icons.meeting_room,
+    'Single Room': Icons.bed,
+    'Double Room': Icons.king_bed,
+    'Self-contained': Icons.home_work,
+    'Shop Unit': Icons.storefront,
+    'Stall': Icons.store,
+    'Mall': Icons.local_mall,
+    'Plaza': Icons.business,
+    'Corporate Tower': Icons.location_city,
+    'Storage': Icons.inventory_2,
+    'Depot': Icons.warehouse,
+    'Plot of Land': Icons.terrain,
+    'Farmland': Icons.agriculture,
+    'Acreage': Icons.landscape,
+    'Mailo Land': Icons.map,
     'Hotel': Icons.hotel,
+    'Guest House': Icons.house,
+    'Safari Lodge': Icons.cabin,
+    'Lodge': Icons.cottage,
+    'Shops Below, Flats Above': Icons.store_mall_directory,
   };
 
   List<Map<String, dynamic>> allProperties = [];
@@ -686,14 +728,16 @@ class _HomePageState extends State<HomeScreen> {
           ),
         );
 
-    return Card(
-      color: cardColor,
-      margin: margin ?? const EdgeInsets.only(bottom: 16),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      clipBehavior: Clip.antiAlias,
-      elevation: isDark ? 0 : 2,
-      shadowColor: Colors.black.withValues(alpha: 0.08),
-      child: Column(
+    return GestureDetector(
+      onTap: openDetails,
+      child: Card(
+        color: cardColor,
+        margin: margin ?? const EdgeInsets.only(bottom: 16),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        clipBehavior: Clip.antiAlias,
+        elevation: isDark ? 0 : 2,
+        shadowColor: Colors.black.withValues(alpha: 0.08),
+        child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Stack(
@@ -779,9 +823,9 @@ class _HomePageState extends State<HomeScreen> {
                   bottom: 10,
                   right: 10,
                   child: GestureDetector(
-                    onTap: () => _openReelFullscreen(
-                      initial: reels.indexWhere(
-                          (r) => r['videoUrl'] == property['video']),
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const ReelsPage()),
                     ),
                     child: Container(
                       padding: const EdgeInsets.all(6),
@@ -850,7 +894,13 @@ class _HomePageState extends State<HomeScreen> {
                     const SizedBox(width: 4),
                     Expanded(
                       child: Text(
-                        "${property['subCounty']}, ${property['district']}",
+                        () {
+                          final sub = property['subCounty']?.toString() ?? '';
+                          final dist = property['district']?.toString() ?? '';
+                          final loc = property['location']?.toString() ?? '';
+                          final parts = [sub, dist].where((s) => s.isNotEmpty).toList();
+                          return parts.isNotEmpty ? parts.join(', ') : loc;
+                        }(),
                         style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -859,47 +909,28 @@ class _HomePageState extends State<HomeScreen> {
                   ],
                 ),
                 const SizedBox(height: 10),
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: const Color.fromARGB(255, 169, 97, 14).withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        property['brokerName']?.toString() ?? 'Broker',
-                        style: const TextStyle(
-                          color: Color.fromARGB(255, 169, 97, 14),
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: const Color.fromARGB(255, 169, 97, 14)
+                        .withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    property['brokerName']?.toString() ?? 'Broker',
+                    style: const TextStyle(
+                      color: Color.fromARGB(255, 169, 97, 14),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
                     ),
-                    const Spacer(),
-                    OutlinedButton.icon(
-                      onPressed: openDetails,
-                      icon: const Icon(Icons.visibility_outlined, size: 16),
-                      label: const Text("View", style: TextStyle(fontSize: 12)),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: const Color.fromARGB(255, 169, 97, 14),
-                        side: const BorderSide(
-                          color: Color.fromARGB(255, 169, 97, 14),
-                        ),
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 14, vertical: 6),
-                        visualDensity: VisualDensity.compact,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
               ],
             ),
           ),
         ],
+      ),
       ),
     );
   }
@@ -1017,7 +1048,7 @@ class _HomePageState extends State<HomeScreen> {
             SliverPersistentHeader(
               pinned: true,
               delegate: _SearchHeaderDelegate(
-                height: 106,
+                height: 170,
                 child: Container(
                   decoration: BoxDecoration(
                     color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
@@ -1029,81 +1060,119 @@ class _HomePageState extends State<HomeScreen> {
                       ),
                     ],
                   ),
-                  padding: const EdgeInsets.fromLTRB(12, 18, 12, 10),
-                  child: SizedBox(
-                    height: 74,
-                    child: ListView(
-                      scrollDirection: Axis.horizontal,
-                      children: [
-                        'All',
-                        'House',
-                        'Apartment',
-                        'Condominium',
-                        'Office',
-                        'Shop',
-                        'Land',
-                        'Warehouse',
-                        'Hotel'
-                      ].map((type) {
-                        final isSelected = selectedType == type;
-                        return GestureDetector(
-                          onTap: () {
-                            setState(() {
-                              selectedType = type;
-                              applyFilters();
-                            });
-                          },
-                          child: Padding(
-                            padding:
-                                const EdgeInsets.symmetric(horizontal: 6),
-                            child: Column(
-                              children: [
-                                Container(
-                                  width: 48,
-                                  height: 48,
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    color: isSelected
-                                        ? const Color.fromARGB(
-                                            255, 169, 97, 14)
-                                        : Colors.white,
-                                    border: Border.all(
-                                      color: isSelected
-                                          ? const Color.fromARGB(
-                                              255, 169, 97, 14)
-                                          : Colors.grey.shade400,
-                                      width: 1.5,
-                                    ),
-                                  ),
-                                  child: Icon(
-                                    _categoryIcons[type] ?? Icons.home,
-                                    color: isSelected
-                                        ? Colors.white
-                                        : const Color.fromARGB(
-                                            255, 169, 97, 14),
-                                    size: 22,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  type,
-                                  style: TextStyle(
-                                    color: isSelected
-                                        ? const Color.fromARGB(
-                                            255, 169, 97, 14)
-                                        : Colors.grey.shade700,
-                                    fontWeight: isSelected
-                                        ? FontWeight.w600
-                                        : FontWeight.w400,
-                                    fontSize: 12,
-                                  ),
-                                ),
-                              ],
+                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                  child: Column(
+                    children: [
+                      GestureDetector(
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => ExplorePage(),
+                            ),
+                          );
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 12,
+                          ),
+                          decoration: BoxDecoration(
+                            color: isDark
+                                ? const Color(0xFF2A2A2A)
+                                : Colors.grey.shade100,
+                            borderRadius: BorderRadius.circular(30),
+                            border: Border.all(
+                              color: isDark
+                                  ? Colors.grey.shade700
+                                  : Colors.grey.shade300,
                             ),
                           ),
-                        );
-                      }).toList(),
-                    ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.search,
+                                color: Colors.grey.shade500,
+                              ),
+                              const SizedBox(width: 10),
+                              Text(
+                                'Search properties, locations...',
+                                style: TextStyle(
+                                  color: Colors.grey.shade500,
+                                  fontSize: 15,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      SizedBox(
+                        height: 74,
+                        child: ListView(
+                          scrollDirection: Axis.horizontal,
+                          children: _propertyCategories.map((type) {
+                            final isSelected = selectedType == type;
+                            return GestureDetector(
+                              onTap: () {
+                                setState(() {
+                                  selectedType = type;
+                                  applyFilters();
+                                });
+                              },
+                              child: Padding(
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 6),
+                                child: Column(
+                                  children: [
+                                    Container(
+                                      width: 48,
+                                      height: 48,
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        color: isSelected
+                                            ? const Color.fromARGB(
+                                                255, 169, 97, 14)
+                                            : Colors.white,
+                                        border: Border.all(
+                                          color: isSelected
+                                              ? const Color.fromARGB(
+                                                  255, 169, 97, 14)
+                                              : Colors.grey.shade400,
+                                          width: 1.5,
+                                        ),
+                                      ),
+                                      child: Icon(
+                                        _categoryIcons[type] ?? Icons.home,
+                                        color: isSelected
+                                            ? Colors.white
+                                            : const Color.fromARGB(
+                                                255, 169, 97, 14),
+                                        size: 22,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      type,
+                                      style: TextStyle(
+                                        color: isSelected
+                                            ? const Color.fromARGB(
+                                                255, 169, 97, 14)
+                                            : Colors.grey.shade700,
+                                        fontWeight: isSelected
+                                            ? FontWeight.w600
+                                            : FontWeight.w400,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -1118,9 +1187,6 @@ class _HomePageState extends State<HomeScreen> {
                     )
                   : SliverList(
                       delegate: SliverChildListDelegate([
-                        _buildReelSection(),
-                        if (reels.isNotEmpty)
-                          const SizedBox(height: 24),
                         Padding(
                           padding: const EdgeInsets.only(bottom: 12),
                           child: Row(
@@ -1236,7 +1302,7 @@ class _BottomNavBar extends State<BottomNavBar> {
 
   final List<Widget> _pages = [
     const HomeScreen(),
-    ExplorePage(),
+    const ReelsPage(),
     const ProfilePage(),
   ];
 
@@ -1258,34 +1324,91 @@ class _BottomNavBar extends State<BottomNavBar> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     const activeColor = Color.fromARGB(255, 169, 97, 14);
-    final inactiveColor = isDark ? Colors.grey.shade300 : Colors.grey.shade700;
+    final inactiveColor = isDark ? Colors.grey.shade400 : Colors.grey.shade600;
+    final barColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
 
     return Scaffold(
-      backgroundColor: isDark ? const Color(0xFF121212) : const Color(0xFFF5F5F5),
+      backgroundColor:
+          isDark ? const Color(0xFF121212) : const Color(0xFFF5F5F5),
       body: IndexedStack(
         index: _selectedIndex,
         children: _pages,
       ),
-      bottomNavigationBar: MotionTabBar(
-        initialSelectedTab: 'Home',
-        labels: const ['Home', 'Explore', 'Profile'],
-        icons: const [Icons.home, Icons.search, Icons.person],
-        onTabItemSelected: _onTapped,
-        tabBarColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-        tabSelectedColor: activeColor,
-        tabIconSelectedColor: Colors.white,
-        tabIconColor: inactiveColor,
-        tabIconSize: 24,
-        tabIconSelectedSize: 32,
-        tabSize: 58,
-        tabBarHeight: 60,
-        textStyle: TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-          color: activeColor,
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
+      floatingActionButton: SizedBox(
+        width: 68,
+        height: 68,
+        child: FloatingActionButton(
+          heroTag: 'reelsFab',
+          onPressed: () => _onTapped(1),
+          backgroundColor:
+              _selectedIndex == 1 ? activeColor : activeColor.withValues(alpha: 0.85),
+          elevation: _selectedIndex == 1 ? 6 : 3,
+          shape: const CircleBorder(),
+          child: const Icon(Icons.play_arrow_rounded,
+              color: Colors.white, size: 38),
         ),
-        useSafeArea: true,
-        labelAlwaysVisible: false,
+      ),
+      bottomNavigationBar: BottomAppBar(
+        color: barColor,
+        shape: const CircularNotchedRectangle(),
+        notchMargin: 8,
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        height: 64,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceAround,
+          children: [
+            _navItem(
+              icon: Icons.home_rounded,
+              label: 'Home',
+              index: 0,
+              activeColor: activeColor,
+              inactiveColor: inactiveColor,
+            ),
+            const SizedBox(width: 56),
+            _navItem(
+              icon: Icons.person_rounded,
+              label: 'Profile',
+              index: 2,
+              activeColor: activeColor,
+              inactiveColor: inactiveColor,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _navItem({
+    required IconData icon,
+    required String label,
+    required int index,
+    required Color activeColor,
+    required Color inactiveColor,
+  }) {
+    final selected = _selectedIndex == index;
+    final color = selected ? activeColor : inactiveColor;
+    return InkWell(
+      onTap: () => _onTapped(index),
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, color: color, size: 26),
+            const SizedBox(height: 2),
+            Text(
+              label,
+              style: TextStyle(
+                color: color,
+                fontSize: 12,
+                fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

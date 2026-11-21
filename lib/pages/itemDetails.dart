@@ -158,6 +158,7 @@ class _PropData {
   final String brokerPhone;
   final num? brokerRating;
   final num bookingFee;
+  final String listingType;
 
   const _PropData({
     required this.id,
@@ -178,6 +179,7 @@ class _PropData {
     required this.brokerPhone,
     required this.brokerRating,
     required this.bookingFee,
+    required this.listingType,
   });
 
   factory _PropData.fromMap(Map<String, dynamic> p,
@@ -214,6 +216,27 @@ class _PropData {
     final ratingCount = p['ratingCount'] ?? p['totalRatings'];
     final brokerRating = p['brokerRating'] ?? widget.brokerRating;
 
+    final ltRaw = (p['listingType'] ??
+            p['listing_type'] ??
+            p['purpose'] ??
+            p['offerType'] ??
+            p['transactionType'] ??
+            p['listingCategory'] ??
+            '')
+        .toString()
+        .trim()
+        .toLowerCase();
+    String listingType = '';
+    if (ltRaw.contains('rent')) {
+      listingType = 'For Rent';
+    } else if (ltRaw.contains('sale') || ltRaw.contains('buy')) {
+      listingType = 'For Sale';
+    } else if (p['forRent'] == true || p['isRental'] == true) {
+      listingType = 'For Rent';
+    } else if (p['forSale'] == true) {
+      listingType = 'For Sale';
+    }
+
     return _PropData(
       id: (p['id'] ?? p['itemID'] ?? widget.itemID).toString(),
       title:
@@ -237,6 +260,7 @@ class _PropData {
       brokerRating: brokerRating is num ? brokerRating.toDouble() : null,
       bookingFee: num.tryParse(p['brokerBookingFee']?.toString() ?? '') ??
           20000,
+      listingType: listingType,
     );
   }
 }
@@ -917,6 +941,10 @@ class _TitleCard extends StatelessWidget {
           const SizedBox(height: 4),
           Row(
             children: [
+              if (model.listingType.isNotEmpty) ...[
+                _ListingTypeBadge(label: model.listingType),
+                const SizedBox(width: 8),
+              ],
               _StatusBadge(status: model.status),
               const SizedBox(width: 8),
               Expanded(
@@ -929,26 +957,13 @@ class _TitleCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 14),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                price,
-                style: const TextStyle(
-                  color: _primary,
-                  fontSize: 22,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              const SizedBox(width: 6),
-              Padding(
-                padding: const EdgeInsets.only(bottom: 3),
-                child: Text(
-                  'per booking',
-                  style: TextStyle(color: muted, fontSize: 12),
-                ),
-              ),
-            ],
+          Text(
+            price,
+            style: const TextStyle(
+              color: _primary,
+              fontSize: 22,
+              fontWeight: FontWeight.w800,
+            ),
           ),
           if (model.rating != null) ...[
             const SizedBox(height: 10),
@@ -1012,6 +1027,31 @@ class _StatusBadge extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _ListingTypeBadge extends StatelessWidget {
+  final String label;
+  const _ListingTypeBadge({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    const color = _primary;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: color,
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+        ),
       ),
     );
   }
